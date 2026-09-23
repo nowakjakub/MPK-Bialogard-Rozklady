@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Autobusy Białogard</title>
+  <meta name="description" content="Najbliższe odjazdy i przyjazdy autobusów ZKM Białogard dla wybranego przystanku.">
+  <style>
+    :root {
+      --tlo: #f4f5f7;
+      --karta: #ffffff;
+      --tekst: #1b1f24;
+      --szary: #5f6b7a;
+      --linia-tlo: #c8102e;
+      --linia-tekst: #ffffff;
+      --akcent: #c8102e;
+      --ramka: #dde1e6;
+      --zaraz: #fff4e5;
+      --ostrzezenie: #fff3cd;
+      --ostrzezenie-tekst: #664d03;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --tlo: #121417;
+        --karta: #1d2126;
+        --tekst: #e8eaed;
+        --szary: #9aa4b1;
+        --linia-tlo: #e0314b;
+        --akcent: #ff6b7f;
+        --ramka: #2e343b;
+        --zaraz: #3a2c14;
+        --ostrzezenie: #3d3314;
+        --ostrzezenie-tekst: #ffe08a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--tlo);
+      color: var(--tekst);
+      font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 560px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 1.4rem; margin: 8px 0 4px; }
+    #teraz { color: var(--szary); margin: 0 0 16px; }
+    .ostrzezenie {
+      background: var(--ostrzezenie); color: var(--ostrzezenie-tekst);
+      padding: 10px 12px; border-radius: 8px; font-size: .9rem; margin-bottom: 16px;
+    }
+    label { display: block; font-size: .85rem; color: var(--szary); margin: 12px 0 4px; }
+    select, input {
+      width: 100%; font: inherit; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid var(--ramka); background: var(--karta); color: var(--tekst);
+    }
+    select#przystanek { font-size: 1.1rem; font-weight: 600; }
+    .wiersz { display: flex; gap: 8px; }
+    .wiersz input { flex: 1; }
+    .wiersz button {
+      font: inherit; padding: 0 12px; border-radius: 8px; border: 1px solid var(--ramka);
+      background: var(--karta); color: var(--tekst); cursor: pointer;
+    }
+    .zakladki { display: flex; margin: 20px 0 8px; border: 1px solid var(--ramka); border-radius: 10px; overflow: hidden; }
+    .zakladki button {
+      flex: 1; font: inherit; font-weight: 600; padding: 10px; border: 0; cursor: pointer;
+      background: var(--karta); color: var(--szary);
+    }
+    .zakladki button[aria-selected="true"] { background: var(--akcent); color: #fff; }
+    #info { color: var(--szary); font-size: .9rem; margin: 12px 0 8px; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    .kurs {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--karta); border: 1px solid var(--ramka); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .kurs.zaraz { background: var(--zaraz); }
+    .linia {
+      min-width: 40px; text-align: center; font-weight: 700; font-size: 1.1rem;
+      background: var(--linia-tlo); color: var(--linia-tekst); border-radius: 6px; padding: 4px 6px;
+    }
+    .opis { flex: 1; min-width: 0; }
+    .kierunek { font-weight: 600; overflow-wrap: anywhere; }
+    .dodatkowe { color: var(--szary); font-size: .85rem; }
+    .czas { text-align: right; white-space: nowrap; }
+    .godzina { font-weight: 700; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+    .za { color: var(--szary); font-size: .85rem; }
+    footer { color: var(--szary); font-size: .8rem; margin: 24px 0 8px; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>🚌 Autobusy Białogard</h1>
+    <p id="teraz"></p>
+
+    <div id="ostrzezenie" class="ostrzezenie" hidden>
+      Uwaga: to są <strong>przykładowe dane</strong>, nie prawdziwy rozkład.
+      Wpisz prawdziwe godziny do pliku <code>data/rozklad.js</code>.
+    </div>
+
+    <label for="przystanek">Mój przystanek</label>
+    <select id="przystanek"></select>
+
+    <div id="naglowek-cel">
+      <label for="cel">Dokąd jadę (opcjonalnie)</label>
+      <select id="cel"></select>
+    </div>
+
+    <label for="czas">Na kiedy (puste = teraz)</label>
+    <div class="wiersz">
+      <input id="czas" type="datetime-local">
+      <button id="reset-czasu" type="button">Teraz</button>
+    </div>
+
+    <div class="zakladki" role="tablist">
+      <button type="button" role="tab" data-tryb="odjazdy" aria-selected="true">Odjazdy</button>
+      <button type="button" role="tab" data-tryb="przyjazdy" aria-selected="false">Przyjazdy</button>
+    </div>
+
+    <p id="info"></p>
+    <ul id="lista"></ul>
+
+    <footer>
+      Źródło rozkładu: <a href="https://www.zkmb.pl/rozklad-jazdy/">zkmb.pl/rozklad-jazdy</a>.
+      Zawsze sprawdź komunikaty przewoźnika – rozkład może się zmienić (np. rozkład wakacyjny).
+    </footer>
+  </main>
+
+  <script src="data/rozklad.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
