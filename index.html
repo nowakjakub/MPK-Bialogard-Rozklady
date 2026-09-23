@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Autobusy Białogard</title>
   <meta name="description" content="Najbliższe odjazdy i przyjazdy autobusów ZKM Białogard dla wybranego przystanku.">
+  <meta name="theme-color" content="#c8102e">
   <style>
     :root {
       --tlo: #f4f5f7;
@@ -16,8 +17,8 @@
       --akcent: #c8102e;
       --ramka: #dde1e6;
       --zaraz: #fff4e5;
-      --ostrzezenie: #fff3cd;
-      --ostrzezenie-tekst: #664d03;
+      --zolty: #ffeecc;
+      --zolty-ramka: #8a6d1f;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -29,8 +30,8 @@
         --akcent: #ff6b7f;
         --ramka: #2e343b;
         --zaraz: #3a2c14;
-        --ostrzezenie: #3d3314;
-        --ostrzezenie-tekst: #ffe08a;
+        --zolty: #5c4a1c;
+        --zolty-ramka: #e0c070;
       }
     }
     * { box-sizing: border-box; }
@@ -43,10 +44,6 @@
     main { max-width: 560px; margin: 0 auto; padding: 16px; }
     h1 { font-size: 1.4rem; margin: 8px 0 4px; }
     #teraz { color: var(--szary); margin: 0 0 16px; }
-    .ostrzezenie {
-      background: var(--ostrzezenie); color: var(--ostrzezenie-tekst);
-      padding: 10px 12px; border-radius: 8px; font-size: .9rem; margin-bottom: 16px;
-    }
     label { display: block; font-size: .85rem; color: var(--szary); margin: 12px 0 4px; }
     select, input {
       width: 100%; font: inherit; padding: 10px 12px; border-radius: 8px;
@@ -83,6 +80,14 @@
     .czas { text-align: right; white-space: nowrap; }
     .godzina { font-weight: 700; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
     .za { color: var(--szary); font-size: .85rem; }
+    .znaki { margin-top: 4px; }
+    .znak { display: flex; gap: 6px; align-items: baseline; color: var(--szary); font-size: .8rem; }
+    .symbol {
+      flex: none; min-width: 16px; height: 16px; line-height: 16px; text-align: center;
+      border: 1px solid var(--ramka); border-radius: 4px; font-weight: 700; font-size: .75rem; color: var(--tekst);
+    }
+    .symbol.zolty { background: var(--zolty); border-color: var(--zolty-ramka); }
+    .pdf { display: inline-block; margin-top: 2px; font-size: .75rem; color: var(--szary); }
     footer { color: var(--szary); font-size: .8rem; margin: 24px 0 8px; }
     footer a { color: inherit; }
   </style>
@@ -91,11 +96,6 @@
   <main>
     <h1>🚌 Autobusy Białogard</h1>
     <p id="teraz"></p>
-
-    <div id="ostrzezenie" class="ostrzezenie" hidden>
-      Uwaga: to są <strong>przykładowe dane</strong>, nie prawdziwy rozkład.
-      Wpisz prawdziwe godziny do pliku <code>data/rozklad.js</code>.
-    </div>
 
     <label for="przystanek">Mój przystanek</label>
     <select id="przystanek"></select>
@@ -120,8 +120,10 @@
     <ul id="lista"></ul>
 
     <footer>
-      Źródło rozkładu: <a href="https://www.zkmb.pl/rozklad-jazdy/">zkmb.pl/rozklad-jazdy</a>.
-      Zawsze sprawdź komunikaty przewoźnika – rozkład może się zmienić (np. rozkład wakacyjny).
+      <span id="wersja"></span>
+      Źródło: <a href="https://www.zkmb.pl/rozklad-jazdy/">zkmb.pl/rozklad-jazdy</a>.
+      Tolerancja punktualności: +1 / −3 min. Rozkład może się zmienić (np. ferie, wakacje) –
+      w razie wątpliwości sprawdź tabliczkę PDF lub stronę przewoźnika.
     </footer>
   </main>
 

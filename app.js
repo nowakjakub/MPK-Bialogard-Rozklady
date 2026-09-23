@@ -2,8 +2,9 @@
   "use strict";
 
   var DANE = window.ROZKLAD;
-  var ILE_POZYCJI = 12;
-  var NAZWY_DNI = { R: "dzień roboczy", S: "sobota", N: "niedziela / święto" };
+  var ILE_POZYCJI = 15;
+  var NAZWY_DNI = { R: "dzień powszedni", SN: "sobota / niedziela / święto" };
+  var ZNAK_ZOLTY = "#";
 
   var el = {
     przystanek: document.getElementById("przystanek"),
@@ -13,13 +14,13 @@
     info: document.getElementById("info"),
     lista: document.getElementById("lista"),
     zakladki: document.querySelectorAll("[data-tryb]"),
-    ostrzezenie: document.getElementById("ostrzezenie"),
-    naglowekCel: document.getElementById("naglowek-cel")
+    naglowekCel: document.getElementById("naglowek-cel"),
+    wersja: document.getElementById("wersja")
   };
 
   var tryb = "odjazdy";
 
-  // ---------- pomocnicze: czas ----------
+  // ---------- czas i kalendarz ----------
 
   function naMinuty(hhmm) {
     var p = hhmm.split(":");
@@ -44,7 +45,7 @@
     return new Date(rok, miesiac - 1, dzien);
   }
 
-  function klucz(d) {
+  function kluczDaty(d) {
     return d.getMonth() + 1 + "-" + d.getDate();
   }
 
@@ -53,45 +54,50 @@
     if (rok >= 2025) stale.push("12-24"); // Wigilia wolna od 2025 r.
     var w = wielkanoc(rok);
     function przesun(dni) { return new Date(w.getFullYear(), w.getMonth(), w.getDate() + dni); }
-    return stale.concat([klucz(w), klucz(przesun(1)), klucz(przesun(49)), klucz(przesun(60))]);
+    return stale.concat([kluczDaty(w), kluczDaty(przesun(1)), kluczDaty(przesun(49)), kluczDaty(przesun(60))]);
   }
 
+  // Rozkład ZKMB ma dwie kolumny: dzień powszedni (R) oraz sobota/niedziela (SN).
   function typDnia(data) {
-    if (data.getDay() === 0 || swieta(data.getFullYear()).indexOf(klucz(data)) !== -1) return "N";
-    if (data.getDay() === 6) return "S";
+    var dzien = data.getDay();
+    if (dzien === 0 || dzien === 6 || swieta(data.getFullYear()).indexOf(kluczDaty(data)) !== -1) return "SN";
     return "R";
   }
 
   // ---------- dane ----------
 
-  // Zamienia rozkład na płaską listę kursów: każdy kurs ma listę { przystanek, min }.
-  function zbudujKursy() {
-    var kursy = [];
-    DANE.linie.forEach(function (linia) {
-      linia.trasy.forEach(function (trasa) {
-        trasa.kursy.forEach(function (kurs) {
-          var start = kurs.start ? naMinuty(kurs.start) : null;
-          var przejazd = trasa.przystanki.map(function (nazwa, i) {
-            var t = kurs.czasy ? kurs.czasy[i] : null;
-            var min = t ? naMinuty(t) : (start !== null && trasa.minuty ? start + trasa.minuty[i] : null);
-            // godziny po północy w jednym kursie (np. 23:58 -> 00:03)
-            if (t && i > 0 && min !== null && start === null && min < naMinuty(kurs.czasy[0])) min += 1440;
-            return { przystanek: nazwa, min: min };
-          });
-          kursy.push({ linia: linia.numer, kierunek: trasa.kierunek, dni: kurs.dni, przejazd: przejazd });
-        });
-      });
-    });
-    return kursy;
+  function porownajNazwy(a, b) {
+    return DANE.przystanki[a].localeCompare(DANE.przystanki[b], "pl");
   }
 
-  var KURSY = zbudujKursy();
+  // pierwszy liczbowy czas jazdy w wierszu trasy (PDF-y mają czasem 2 warianty trasy)
+  function czasJazdy(wiersz) {
+    for (var i = 0; i < wiersz.m.length; i++) if (typeof wiersz.m[i] === "number") return wiersz.m[i];
+    return null;
+  }
 
-  var PRZYSTANKI = (function () {
-    var zbior = {};
-    KURSY.forEach(function (k) { k.przejazd.forEach(function (p) { zbior[p.przystanek] = true; }); });
-    return Object.keys(zbior).sort(function (a, b) { return a.localeCompare(b, "pl"); });
-  })();
+  // literki z kolumny czasu jazdy, np. "k" = tylko kursy oznaczone "k" jadą przez ten przystanek
+  function wymaganyZnak(wiersz) {
+    for (var i = 0; i < wiersz.m.length; i++) {
+      if (typeof wiersz.m[i] === "string" && /^[a-z]$/i.test(wiersz.m[i])) return wiersz.m[i];
+    }
+    return null;
+  }
+
+  function znaki(oznaczenie) {
+    var wynik = [];
+    for (var i = 0; i < oznaczenie.length; i++) wynik.push(oznaczenie.charAt(i));
+    return wynik;
+  }
+
+  function koniecTrasy(t) {
+    return t.trasa[t.trasa.length - 1].k;
+  }
+
+  function indeksNaTrasie(t, klucz) {
+    for (var i = 1; i < t.trasa.length; i++) if (t.trasa[i].k === klucz) return i;
+    return -1;
+  }
 
   // ---------- zapamiętywanie wyboru ----------
 
@@ -100,53 +106,87 @@
 
   // ---------- szukanie ----------
 
-  // Zwraca najbliższe zdarzenia (odjazdy albo przyjazdy) na przystanku od chwili "od".
-  function szukaj(przystanek, cel, od) {
-    var wyniki = [];
-    var poczatekDnia = new Date(od.getFullYear(), od.getMonth(), od.getDate());
-    var teraz = od.getHours() * 60 + od.getMinutes();
-
-    // dziś + jutro, żeby wieczorem pokazać też pierwsze poranne kursy
+  // Dla dziś i jutra wywołuje fn(tabliczka, godzina, oznaczenie, przesunięcieDni).
+  function dlaKazdegoOdjazdu(tabliczki, od, fn) {
     [0, 1].forEach(function (przesuniecie) {
-      var dzien = new Date(poczatekDnia.getFullYear(), poczatekDnia.getMonth(), poczatekDnia.getDate() + przesuniecie);
+      var dzien = new Date(od.getFullYear(), od.getMonth(), od.getDate() + przesuniecie);
       var typ = typDnia(dzien);
-
-      KURSY.forEach(function (k) {
-        if (k.dni.indexOf(typ) === -1) return;
-        var idx = -1;
-        for (var i = 0; i < k.przejazd.length; i++) {
-          if (k.przejazd[i].przystanek === przystanek && k.przejazd[i].min !== null) { idx = i; break; }
-        }
-        if (idx === -1) return;
-        var ostatni = idx === k.przejazd.length - 1;
-        var pierwszy = idx === 0;
-        if (tryb === "odjazdy" && ostatni) return; // tu kurs się kończy – nic nie odjeżdża
-        if (tryb === "przyjazdy" && pierwszy) return; // tu kurs dopiero startuje
-
-        var przyjazdDoCelu = null;
-        if (cel) {
-          for (var j = idx + 1; j < k.przejazd.length; j++) {
-            if (k.przejazd[j].przystanek === cel && k.przejazd[j].min !== null) { przyjazdDoCelu = k.przejazd[j].min; break; }
-          }
-          if (przyjazdDoCelu === null) return;
-        }
-
-        var min = k.przejazd[idx].min + przesuniecie * 1440;
-        if (min < teraz) return;
-        wyniki.push({
-          linia: k.linia,
-          kierunek: k.kierunek,
-          skad: k.przejazd[0].przystanek,
-          koniec: ostatni,
-          min: min,
-          za: min - teraz,
-          cel: przyjazdDoCelu,
-          jutro: min >= 1440
-        });
+      tabliczki.forEach(function (t) {
+        t.odjazdy[typ].forEach(function (o) { fn(t, o[0], o[1], przesuniecie); });
       });
     });
+  }
 
-    wyniki.sort(function (a, b) { return a.min - b.min || a.linia.localeCompare(b.linia, "pl", { numeric: true }); });
+  function odjazdy(klucz, cel, od) {
+    var teraz = od.getHours() * 60 + od.getMinutes();
+    var tabliczki = DANE.tabliczki.filter(function (t) { return t.k === klucz; });
+    var wyniki = [];
+    dlaKazdegoOdjazdu(tabliczki, od, function (t, godzina, oznaczenie, przesuniecie) {
+      var min = naMinuty(godzina) + przesuniecie * 1440;
+      if (min < teraz) return;
+      var wynik = { t: t, min: min, za: min - teraz, oznaczenie: oznaczenie, jutro: przesuniecie > 0 };
+      if (cel) {
+        var j = indeksNaTrasie(t, cel);
+        if (j === -1) return;
+        var znak = wymaganyZnak(t.trasa[j]);
+        if (znak && oznaczenie.indexOf(znak) === -1) return;
+        if (!dojezdza(t, oznaczenie, j)) return;
+        var jazda = czasJazdy(t.trasa[j]);
+        wynik.przyjazd = jazda === null ? null : min + jazda;
+      }
+      wyniki.push(wynik);
+    });
+    return posortuj(wyniki);
+  }
+
+  // Kurs oznaczony np. "x – tylko do Połczyńska Cmentarz" nie dojeżdża dalej niż ten przystanek.
+  function dojezdza(t, oznaczenie, j) {
+    return znaki(oznaczenie).every(function (z) {
+      var opis = (t.obj[z] || "").toLowerCase();
+      var m = opis.match(/tylko do (.+)/);
+      if (!m) return true;
+      for (var i = 1; i < j; i++) {
+        if (m[1].indexOf(t.trasa[i].n.toLowerCase()) !== -1) return false;
+      }
+      return true;
+    });
+  }
+
+  // Przyjazd = odjazd z wcześniejszego przystanku + czas jazdy. Liczymy ze wszystkich tabliczek
+  // i usuwamy powtórki, więc działa też na pętlach, które nie mają własnych tabliczek.
+  function przyjazdy(klucz, od) {
+    var teraz = od.getHours() * 60 + od.getMinutes();
+    var zrodla = [];
+    DANE.tabliczki.forEach(function (t) {
+      var j = indeksNaTrasie(t, klucz);
+      if (j === -1) return;
+      var jazda = czasJazdy(t.trasa[j]);
+      if (jazda !== null) zrodla.push({ t: t, j: j, jazda: jazda, znak: wymaganyZnak(t.trasa[j]) });
+    });
+    zrodla.sort(function (a, b) { return a.jazda - b.jazda; }); // najbliższa tabliczka jest najdokładniejsza
+
+    var wyniki = [];
+    zrodla.forEach(function (z) {
+      dlaKazdegoOdjazdu([z.t], od, function (t, godzina, oznaczenie, przesuniecie) {
+        if (z.znak && oznaczenie.indexOf(z.znak) === -1) return;
+        if (!dojezdza(t, oznaczenie, z.j)) return;
+        var min = naMinuty(godzina) + z.jazda + przesuniecie * 1440;
+        if (min < teraz) return;
+        var powtorka = wyniki.some(function (w) {
+          return w.t.linia === t.linia && koniecTrasy(w.t) === koniecTrasy(t) && Math.abs(w.min - min) <= 3;
+        });
+        if (powtorka) return;
+        wyniki.push({ t: t, min: min, za: min - teraz, oznaczenie: oznaczenie, jutro: min >= 1440,
+          skad: t.przystanek, odjazd: min - z.jazda });
+      });
+    });
+    return posortuj(wyniki);
+  }
+
+  function posortuj(wyniki) {
+    wyniki.sort(function (a, b) {
+      return a.min - b.min || a.t.linia.localeCompare(b.t.linia, "pl", { numeric: true });
+    });
     return wyniki.slice(0, ILE_POZYCJI);
   }
 
@@ -167,100 +207,110 @@
     return new Date();
   }
 
+  function dodaj(rodzic, tag, klasa, tekst) {
+    var e = document.createElement(tag);
+    if (klasa) e.className = klasa;
+    if (tekst !== undefined) e.textContent = tekst;
+    rodzic.appendChild(e);
+    return e;
+  }
+
+  function wypelnijSelect(select, klucze, pusta) {
+    select.innerHTML = "";
+    if (pusta) dodaj(select, "option", "", pusta).value = "";
+    klucze.forEach(function (k) {
+      var o = dodaj(select, "option", "", DANE.przystanki[k]);
+      o.value = k;
+    });
+  }
+
   function odswiezCele() {
-    var przystanek = el.przystanek.value;
+    var klucz = el.przystanek.value;
     var poprzedni = el.cel.value;
     var osiagalne = {};
-    KURSY.forEach(function (k) {
-      var idx = k.przejazd.findIndex(function (p) { return p.przystanek === przystanek; });
-      if (idx === -1) return;
-      k.przejazd.slice(idx + 1).forEach(function (p) { osiagalne[p.przystanek] = true; });
+    DANE.tabliczki.forEach(function (t) {
+      if (t.k !== klucz) return;
+      t.trasa.slice(1).forEach(function (w) { if (w.k !== klucz) osiagalne[w.k] = true; });
     });
-    delete osiagalne[przystanek];
-    el.cel.innerHTML = '<option value="">— dowolny —</option>';
-    Object.keys(osiagalne).sort(function (a, b) { return a.localeCompare(b, "pl"); }).forEach(function (n) {
-      var o = document.createElement("option");
-      o.value = n; o.textContent = n;
-      el.cel.appendChild(o);
-    });
+    wypelnijSelect(el.cel, Object.keys(osiagalne).sort(porownajNazwy), "— dowolny —");
     el.cel.value = osiagalne[poprzedni] ? poprzedni : "";
   }
 
+  function rysujZnaki(rodzic, w) {
+    var lista = znaki(w.oznaczenie);
+    if (!lista.length) return;
+    var box = dodaj(rodzic, "div", "znaki");
+    lista.forEach(function (z) {
+      var opis = w.t.obj[z] || "oznaczenie w rozkładzie";
+      var wiersz = dodaj(box, "div", "znak");
+      dodaj(wiersz, "span", z === ZNAK_ZOLTY ? "symbol zolty" : "symbol", z === ZNAK_ZOLTY ? "" : z);
+      dodaj(wiersz, "span", "", opis);
+    });
+  }
+
   function rysuj() {
-    var przystanek = el.przystanek.value;
+    var klucz = el.przystanek.value;
     var cel = tryb === "odjazdy" ? el.cel.value : "";
     var od = wybranyCzas();
-    var typ = typDnia(od);
 
-    el.teraz.textContent = naTekst(od.getHours() * 60 + od.getMinutes()) + " · " + NAZWY_DNI[typ];
+    el.teraz.textContent = naTekst(od.getHours() * 60 + od.getMinutes()) + " · " + NAZWY_DNI[typDnia(od)];
     el.naglowekCel.hidden = tryb !== "odjazdy";
 
-    var wyniki = szukaj(przystanek, cel, od);
+    var wyniki = tryb === "odjazdy" ? odjazdy(klucz, cel, od) : przyjazdy(klucz, od);
     el.lista.innerHTML = "";
 
+    var nazwa = DANE.przystanki[klucz];
     if (!wyniki.length) {
-      el.info.textContent = "Brak kursów w najbliższym czasie.";
+      var maTabliczki = DANE.tabliczki.some(function (t) { return t.k === klucz; });
+      el.info.textContent = tryb === "odjazdy" && !maTabliczki
+        ? "Z przystanku " + nazwa + " nie ma odjazdów w rozkładzie (to pewnie pętla) – zobacz zakładkę Przyjazdy."
+        : "Brak kursów w najbliższym czasie.";
       return;
     }
     el.info.textContent = tryb === "odjazdy"
-      ? "Najbliższe odjazdy z przystanku " + przystanek + (cel ? " do " + cel : "")
-      : "Najbliższe przyjazdy na przystanek " + przystanek;
+      ? "Najbliższe odjazdy z przystanku " + nazwa + (cel ? " do " + DANE.przystanki[cel] : "")
+      : "Najbliższe przyjazdy na przystanek " + nazwa + " (szacowane z czasu jazdy)";
 
     wyniki.forEach(function (w) {
-      var li = document.createElement("li");
-      li.className = "kurs" + (w.za <= 5 ? " zaraz" : "");
+      var li = dodaj(el.lista, "li", "kurs" + (w.za <= 5 ? " zaraz" : ""));
+      dodaj(li, "span", "linia", w.t.linia);
 
-      var linia = document.createElement("span");
-      linia.className = "linia";
-      linia.textContent = w.linia;
-
-      var opis = document.createElement("div");
-      opis.className = "opis";
-      var gl = document.createElement("div");
-      gl.className = "kierunek";
-      var dod = document.createElement("div");
-      dod.className = "dodatkowe";
-
+      var opis = dodaj(li, "div", "opis");
+      var dodatkowe = [];
       if (tryb === "odjazdy") {
-        gl.textContent = "→ " + w.kierunek;
-        if (w.cel !== null) dod.textContent = "Na miejscu (" + cel + ") o " + naTekst(w.cel) + " · jazda " + (w.cel - (w.min % 1440)) + " min";
+        dodaj(opis, "div", "kierunek", "→ " + w.t.kierunek);
+        if (cel) {
+          dodatkowe.push(w.przyjazd === null
+            ? "Czas dojazdu do " + DANE.przystanki[cel] + ": patrz objaśnienia"
+            : "Na miejscu ok. " + naTekst(w.przyjazd) + " (" + (w.przyjazd - w.min) + " min)");
+        }
       } else {
-        gl.textContent = "z: " + w.skad;
-        dod.textContent = w.koniec ? "Kończy tu trasę" : "Jedzie dalej → " + w.kierunek;
+        dodaj(opis, "div", "kierunek", "→ " + w.t.kierunek);
+        dodatkowe.push("odjazd z " + w.skad + " o " + naTekst(w.odjazd));
       }
-      if (w.jutro) dod.textContent = "jutro" + (dod.textContent ? " · " + dod.textContent : "");
-      opis.appendChild(gl);
-      if (dod.textContent) opis.appendChild(dod);
+      if (w.jutro) dodatkowe.unshift("jutro");
+      if (dodatkowe.length) dodaj(opis, "div", "dodatkowe", dodatkowe.join(" · "));
+      rysujZnaki(opis, w);
 
-      var czas = document.createElement("div");
-      czas.className = "czas";
-      var godz = document.createElement("div");
-      godz.className = "godzina";
-      godz.textContent = naTekst(w.min);
-      var za = document.createElement("div");
-      za.className = "za";
-      za.textContent = opisZa(w.za);
-      czas.appendChild(godz);
-      czas.appendChild(za);
-
-      li.appendChild(linia);
-      li.appendChild(opis);
-      li.appendChild(czas);
-      el.lista.appendChild(li);
+      var czas = dodaj(li, "div", "czas");
+      dodaj(czas, "div", "godzina", (tryb === "przyjazdy" ? "ok. " : "") + naTekst(w.min));
+      dodaj(czas, "div", "za", opisZa(w.za));
+      var pdf = dodaj(czas, "a", "pdf", "PDF");
+      pdf.href = w.t.pdf;
+      pdf.target = "_blank";
+      pdf.rel = "noopener";
+      pdf.title = "Tabliczka z rozkładem: linia " + w.t.linia + ", " + w.t.przystanek;
     });
   }
 
   // ---------- start ----------
 
-  if (DANE.przyklad) el.ostrzezenie.hidden = false;
+  el.wersja.textContent = "Rozkład ważny od " + DANE.waznyOd[DANE.waznyOd.length - 1] +
+    " (pobrany " + DANE.pobrano + ").";
 
-  PRZYSTANKI.forEach(function (n) {
-    var o = document.createElement("option");
-    o.value = n; o.textContent = n;
-    el.przystanek.appendChild(o);
-  });
+  wypelnijSelect(el.przystanek, Object.keys(DANE.przystanki).sort(porownajNazwy));
   var zapamietany = wczytaj("przystanek");
-  if (zapamietany && PRZYSTANKI.indexOf(zapamietany) !== -1) el.przystanek.value = zapamietany;
+  if (zapamietany && DANE.przystanki[zapamietany]) el.przystanek.value = zapamietany;
   odswiezCele();
   var zapamietanyCel = wczytaj("cel");
   if (zapamietanyCel) {
