@@ -676,20 +676,21 @@
     return slowa.every(function (s) { return tekst.indexOf(s) !== -1; });
   }
 
-  function pozycja(rodzic, klucz, onclick) {
+  function pozycja(rodzic, klucz, onclick, opis) {
     var b = dodaj(rodzic, "button", "pozycja");
     b.type = "button";
-    dodaj(b, "span", "n", DANE.przystanki[klucz]);
+    var n = dodaj(b, "span", "n", DANE.przystanki[klucz]);
+    if (opis) dodaj(n, "span", "odleglosc", opis);
     var linie = dodaj(b, "span", "linie");
     (LINIE_NA[klucz] || []).forEach(function (l) { odznakaLinii(linie, l, true); });
     b.addEventListener("click", function () { onclick(klucz); });
   }
 
-  function grupa(rodzic, tytul, klucze, onclick) {
+  function grupa(rodzic, tytul, klucze, onclick, opisy) {
     if (!klucze.length) return;
     if (tytul) dodaj(rodzic, "h3", "", tytul);
     var g = dodaj(rodzic, "div", "grupa");
-    klucze.forEach(function (k) { pozycja(g, k, onclick); });
+    klucze.forEach(function (k) { pozycja(g, k, onclick, opisy && opisy[k]); });
   }
 
   function rysujWyszukiwarke() {
@@ -704,17 +705,112 @@
       grupa(box, "Wyniki", trafienia, wybierz);
       return;
     }
+    rysujWPoblizu(box, wybierz);
     grupa(box, "Ulubione", wczytaj("ulubione", []).filter(function (k) { return DANE.przystanki[k]; }), wybierz);
     grupa(box, "Ostatnio wybierane", wczytaj("ostatnie", []).filter(function (k) { return DANE.przystanki[k]; }), wybierz);
     grupa(box, "Wszystkie przystanki", wszystkie, wybierz);
   }
 
-  function otworzOkno(okno, pole, rysuj) {
+  function otworzOkno(okno, pole, rysuj, bezKlawiatury) {
     pole.value = "";
     rysuj();
+    // bez klawiatury: pole tylko do odczytu, żeby okno nie ustawiło w nim kursora (klawiatura zasłoniłaby listę)
+    if (bezKlawiatury) pole.readOnly = true;
     if (okno.showModal) okno.showModal(); else okno.setAttribute("open", "");
     okno.scrollTop = 0;
-    setTimeout(function () { pole.focus(); }, 50);
+    if (bezKlawiatury) {
+      pole.blur();
+      setTimeout(function () { pole.readOnly = false; }, 100);
+    } else {
+      setTimeout(function () { pole.focus(); }, 50);
+    }
+  }
+
+  // ---------- najbliższe przystanki (lokalizacja) ----------
+
+  var GPS = window.PRZYSTANKI_GPS || {};
+  var lokalizacja = { stan: "brak", pozycja: null, czas: 0, blad: "" };
+  var ILE_W_POBLIZU = 5;
+
+  function odleglosc(a, b) {
+    // metry; przybliżenie równoprostokątne wystarcza na odległości w mieście
+    var sr = (a[0] + b[0]) / 2 * Math.PI / 180;
+    var dx = (b[1] - a[1]) * Math.PI / 180 * Math.cos(sr);
+    var dy = (b[0] - a[0]) * Math.PI / 180;
+    return 6371000 * Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function najblizsze(pozycja) {
+    return Object.keys(GPS).filter(function (k) { return DANE.przystanki[k]; }).map(function (k) {
+      var m = Math.min.apply(null, GPS[k].p.map(function (p) { return odleglosc(pozycja, p); }));
+      return { k: k, m: m, szac: !!GPS[k].szac };
+    }).sort(function (a, b) { return a.m - b.m; });
+  }
+
+  function opisOdleglosci(x) {
+    var tekst = x.m < 1000 ? Math.round(x.m / 10) * 10 + " m" : (x.m / 1000).toFixed(1).replace(".", ",") + " km";
+    var pieszo = Math.max(1, Math.round(x.m / 80)); // ok. 4,8 km/h
+    return (x.szac ? "ok. " : "") + tekst + (x.m < 3000 ? " · " + pieszo + " min pieszo" : "");
+  }
+
+  function pobierzLokalizacje(gotowe) {
+    if (!("geolocation" in navigator)) {
+      lokalizacja.stan = "blad"; lokalizacja.blad = "Ta przeglądarka nie udostępnia lokalizacji.";
+      return gotowe();
+    }
+    if (window.isSecureContext === false) {
+      lokalizacja.stan = "blad"; lokalizacja.blad = "Lokalizacja działa tylko na stronie https (np. na GitHub Pages).";
+      return gotowe();
+    }
+    if (lokalizacja.pozycja && Date.now() - lokalizacja.czas < 120000) {
+      lokalizacja.stan = "ok";
+      return gotowe();
+    }
+    lokalizacja.stan = "szukam";
+    gotowe();
+    navigator.geolocation.getCurrentPosition(function (p) {
+      lokalizacja.stan = "ok";
+      lokalizacja.pozycja = [p.coords.latitude, p.coords.longitude];
+      lokalizacja.czas = Date.now();
+      gotowe();
+    }, function (e) {
+      lokalizacja.stan = "blad";
+      lokalizacja.blad = e.code === 1
+        ? "Brak zgody na lokalizację. Zezwól na nią w ustawieniach przeglądarki dla tej strony."
+        : "Nie udało się ustalić lokalizacji. Spróbuj ponownie na zewnątrz lub z włączonym GPS.";
+      gotowe();
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  }
+
+  function rysujWPoblizu(box, wybierz) {
+    if (!Object.keys(GPS).length) return;
+    var sekcja = dodaj(box, "div", "w-poblizu");
+    if (lokalizacja.stan === "brak") {
+      var b = dodaj(sekcja, "button", "chip lokalizuj", "📍 Pokaż najbliższe przystanki");
+      b.type = "button";
+      b.addEventListener("click", function () { pobierzLokalizacje(rysujWyszukiwarke); });
+      return;
+    }
+    dodaj(sekcja, "h3", "", "W pobliżu");
+    if (lokalizacja.stan === "szukam") {
+      dodaj(sekcja, "p", "pusto", "Szukam Twojej lokalizacji…");
+      return;
+    }
+    if (lokalizacja.stan === "blad") {
+      dodaj(sekcja, "p", "pusto", lokalizacja.blad);
+      var ponow = dodaj(sekcja, "button", "chip lokalizuj", "Spróbuj ponownie");
+      ponow.type = "button";
+      ponow.addEventListener("click", function () { pobierzLokalizacje(rysujWyszukiwarke); });
+      return;
+    }
+    var lista = najblizsze(lokalizacja.pozycja);
+    if (lista.length && lista[0].m > 10000) {
+      dodaj(sekcja, "p", "pusto", "Jesteś ok. " + Math.round(lista[0].m / 1000) + " km od najbliższego przystanku ZKMB.");
+    }
+    var opisy = {};
+    lista = lista.slice(0, ILE_W_POBLIZU);
+    lista.forEach(function (x) { opisy[x.k] = opisOdleglosci(x); });
+    grupa(sekcja, null, lista.map(function (x) { return x.k; }), wybierz, opisy);
   }
 
   // ---------- wybór celu ----------
@@ -766,6 +862,12 @@
   if (["odjazdy", "przyjazdy", "rozklad"].indexOf(parametry.get("t")) !== -1) stan.tryb = parametry.get("t");
 
   el.wybierz.addEventListener("click", function () { otworzOkno(el.szukaj, el.szukajPole, rysujWyszukiwarke); });
+  var bliskoBtn = $("blisko");
+  if (!Object.keys(GPS).length) bliskoBtn.hidden = true;
+  bliskoBtn.addEventListener("click", function () {
+    otworzOkno(el.szukaj, el.szukajPole, rysujWyszukiwarke, true);
+    pobierzLokalizacje(rysujWyszukiwarke);
+  });
   el.szukajPole.addEventListener("input", rysujWyszukiwarke);
   $("szukaj-zamknij").addEventListener("click", function () { el.szukaj.close(); });
   el.celPole.addEventListener("input", rysujCele);

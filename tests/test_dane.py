@@ -9,6 +9,7 @@ import unittest
 
 KATALOG = os.path.dirname(os.path.abspath(__file__))
 PLIK = os.path.join(KATALOG, "..", "data", "rozklad.js")
+PLIK_GPS = os.path.join(KATALOG, "..", "data", "przystanki_gps.js")
 
 # Oznaczenia, których brakuje w objaśnieniach na oryginalnych tabliczkach ZKMB (błąd w PDF, nie u nas).
 ZNANE_BRAKI_OBJASNIEN = {
@@ -17,9 +18,10 @@ ZNANE_BRAKI_OBJASNIEN = {
 }
 
 
-def wczytaj():
-    with open(PLIK, encoding="utf-8") as f:
+def wczytaj(plik=PLIK):
+    with open(plik, encoding="utf-8") as f:
         tekst = f.read()
+    tekst = tekst[tekst.index("window."):]  # pomijamy komentarze na początku pliku
     return json.loads(tekst[tekst.index("=") + 1:].strip().rstrip(";"))
 
 
@@ -79,6 +81,27 @@ class TestDaneRozkladu(unittest.TestCase):
     def test_linki_do_pdf(self):
         for t in self.tabliczki:
             self.assertRegex(t["pdf"], r"^https://(www\.)?zkmb\.pl/.+\.pdf$")
+
+
+class TestPolozeniePrzystankow(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.gps = wczytaj(PLIK_GPS)
+        cls.przystanki = wczytaj()["przystanki"]
+
+    def test_kazdy_przystanek_ma_wspolrzedne(self):
+        brak = sorted(set(self.przystanki) - set(self.gps))
+        self.assertEqual(brak, [], "przystanki bez położenia – uruchom narzedzia/pobierz_gps.py")
+
+    def test_wspolrzedne_w_okolicy_bialogardu(self):
+        for k, v in self.gps.items():
+            self.assertTrue(v["p"], k)
+            for lat, lon in v["p"]:
+                self.assertTrue(53.93 <= lat <= 54.08 and 15.85 <= lon <= 16.12, k)
+
+    def test_malo_szacowanych(self):
+        szac = [k for k, v in self.gps.items() if v.get("szac")]
+        self.assertLessEqual(len(szac), 10, szac)
 
 
 if __name__ == "__main__":

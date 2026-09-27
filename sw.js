@@ -1,6 +1,6 @@
 // Tryb offline: najpierw sieć (żeby zawsze mieć świeży rozkład), a bez internetu – kopia z pamięci.
-var PAMIEC = "autobusy-v1";
-var PLIKI = ["./", "index.html", "styl.css", "app.js", "data/rozklad.js", "manifest.webmanifest",
+var PAMIEC = "autobusy-v2";
+var PLIKI = ["./", "index.html", "styl.css", "app.js", "data/rozklad.js", "data/przystanki_gps.js", "manifest.webmanifest",
   "ikony/ikona.svg", "ikony/ikona-192.png", "ikony/ikona-180.png"];
 
 self.addEventListener("install", function (e) {
