@@ -209,3 +209,43 @@ footer { color: var(--szary); font-size: .78rem; margin-top: 24px; }
 footer p { margin: 4px 0; }
 
 :focus-visible { outline: 3px solid #4d90fe; outline-offset: 2px; }
+
+/* ---------- podróż ---------- */
+.podroz { padding-top: 12px; }
+.pola { position: relative; background: var(--karta); border: 1px solid var(--ramka); border-radius: 12px; padding: 8px 52px 8px 12px; }
+.pole { position: relative; }
+.pole + .pole { border-top: 1px solid var(--ramka); }
+.pole label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--szary); padding-top: 4px; }
+.pole input {
+  width: 100%; font: inherit; font-size: 1.05rem; font-weight: 600; border: 0; background: transparent;
+  color: var(--tekst); padding: 4px 0 8px; min-height: 40px;
+}
+.pole input:focus { outline: none; }
+.pole:focus-within label { color: var(--akcent); }
+.zamien {
+  position: absolute; right: 4px; top: 50%; margin-top: -22px; color: var(--szary);
+  border: 1px solid var(--ramka); background: var(--karta);
+}
+.podpowiedzi { position: relative; z-index: 3; }
+.podpowiedzi:empty { display: none; }
+.podpowiedzi {
+  margin: 0 -12px 8px; border-top: 1px solid var(--ramka);
+}
+.podpowiedz {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer;
+  border: 0; border-bottom: 1px solid var(--ramka); background: var(--karta); padding: 8px 12px; min-height: 48px;
+}
+.podpowiedz:last-child { border-bottom: 0; }
+.podpowiedz .ikona { flex: none; width: 24px; text-align: center; }
+.podpowiedz .tekst { flex: 1; min-width: 0; font-weight: 600; }
+.podpowiedz .podpis, .kroki .podpis { display: block; font-weight: 400; font-size: .78rem; color: var(--szary); }
+.podpowiedz-info { padding: 10px 12px; color: var(--szary); font-size: .85rem; }
+.wiersz-opcji { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 58px; }
+.ikona-pieszo { display: inline-block; min-width: 34px; text-align: center; font-size: 1.4rem; }
+.opcja.pieszo { background: transparent; box-shadow: none; border-style: dashed; }
+.opcja .prawa .maly { display: block; max-width: 7.5em; margin-left: auto; white-space: normal; }
+.kroki li.posrednie { color: var(--szary); font-size: .85rem; }
+.kroki li.pieszo::after { border-style: dotted; }
+.zrodlo-adresow { margin-top: 16px; color: var(--szary); font-size: .75rem; }
+.zakladki button { font-size: .95rem; padding-left: 2px; padding-right: 2px; }
+.podroz.podpowiada .zamien { display: none; }
