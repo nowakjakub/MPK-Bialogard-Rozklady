@@ -76,18 +76,6 @@ test("ulubione i wybrany przystanek zostają po odświeżeniu", async ({ page })
   await expect(page.locator("#szukaj-wyniki h3").first()).toHaveText("Ulubione");
 });
 
-test("dokąd jadę: tylko kursy przez Kisielice (oznaczenie k)", async ({ page }) => {
-  await otworz(page, "/?p=dworcowa");
-  await page.locator("#filtry .chip", { hasText: "Dokąd jadę?" }).click();
-  await page.fill("#cel-pole", "kisielice");
-  await page.locator("#cel-wyniki .pozycja", { hasText: /^Kisielice/ }).first().click();
-  const kursy = page.locator(".kurs > button");
-  expect(await kursy.count()).toBeGreaterThan(0);
-  for (const kurs of await kursy.all()) {
-    await expect(kurs.locator(".znaczek", { hasText: "k" })).toHaveCount(1);
-  }
-});
-
 test("przyjazdy działają na pętli bez własnej tabliczki", async ({ page }) => {
   const bledy = await otworz(page, "/?p=polczynska%20petla&t=przyjazdy");
   expect(await page.locator(".kurs").count()).toBeGreaterThan(0);
@@ -131,33 +119,7 @@ test("wszystkie przystanki i zakładki otwierają się bez błędów", async ({ 
   expect(bledy).toEqual([]);
 });
 
-test("📍 pokazuje najbliższe przystanki według lokalizacji", async ({ page, context }) => {
-  await context.grantPermissions(["geolocation"]);
-  await otworz(page, "/?p=komara");
-  const dworcowa = await page.evaluate(() => window.PRZYSTANKI_GPS.dworcowa.p[0]);
-  await context.setGeolocation({ latitude: dworcowa[0], longitude: dworcowa[1] });
-  await page.click("#blisko");
-  const pierwszy = page.locator(".w-poblizu .pozycja").first();
-  await expect(pierwszy.locator(".n")).toContainText("Dworcowa");
-  await expect(pierwszy.locator(".odleglosc")).toContainText("0 m");
-  await expect(page.locator(".w-poblizu .pozycja")).toHaveCount(5);
-  // pole wyszukiwania nie może dostać kursora – na telefonie klawiatura zasłoniłaby listę
-  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).not.toBe("szukaj-pole");
-  await pierwszy.click();
-  await expect(page.locator("#nazwa-przystanku")).toHaveText("Dworcowa");
-});
-
-test("📍 bez zgody na lokalizację pokazuje zrozumiały komunikat", async ({ page }) => {
-  await otworz(page, "/?p=komara");
-  await page.evaluate(() => {
-    navigator.geolocation.getCurrentPosition = (ok, blad) => blad({ code: 1, message: "denied" });
-  });
-  await page.click("#blisko");
-  await expect(page.locator(".w-poblizu")).toContainText("Brak zgody na lokalizację");
-  await expect(page.locator(".w-poblizu button", { hasText: "Spróbuj ponownie" })).toBeVisible();
-});
-
-// ---------- Podróż: skąd → dokąd ----------
+// ---------- Skąd / Dokąd: przystanek, adres lub moja lokalizacja ----------
 
 // Photon (wyszukiwarka adresów) jest podstawiony, żeby testy nie zależały od zewnętrznego serwera.
 async function podstawAdresy(page, odpowiedz) {
@@ -172,63 +134,108 @@ function adres(nazwa, ulica, lat, lon) {
     properties: { name: nazwa, street: ulica, city: "Białogard", type: "house" } };
 }
 
-test("podróż: z przystanku do przystanku pokazuje autobus i kroki", async ({ page }) => {
-  await podstawAdresy(page, { features: [] });
-  const bledy = await otworz(page, "/?p=dworcowa&t=podroz");
-  await expect(page.locator("#skad")).toHaveValue("Dworcowa");
-  await page.click("#dokad");
-  await page.fill("#dokad", "ciszewsk");
-  await page.locator("#dokad-podp .podpowiedz", { hasText: "Ciszewskiego" }).first().click();
+async function wybierz(page, pole, tekst, pozycja) {
+  await page.click(pole === "skad" ? "#wybierz" : "#wybierz-cel");
+  await page.fill("#szukaj-pole", tekst);
+  await page.locator("#szukaj-wyniki .pozycja", { hasText: pozycja }).first().click();
+}
 
-  const opcje = page.locator("#podroz-lista .opcja button");
+test("skąd: 📍 wybiera najbliższy przystanek według lokalizacji", async ({ page, context }) => {
+  await context.grantPermissions(["geolocation"]);
+  await otworz(page, "/?p=komara");
+  const [lat, lon] = await page.evaluate(() => window.PRZYSTANKI_GPS.dworcowa.p[0]);
+  await context.setGeolocation({ latitude: lat, longitude: lon });
+  await page.click("#wybierz");
+  await page.getByText("Najbliższy przystanek (moja lokalizacja)").click();
+  await expect(page.locator("#nazwa-przystanku")).toHaveText("📍 Moja lokalizacja");
+  await expect(page.locator("#skad-opis")).toContainText("najbliższy przystanek: Dworcowa");
+  await expect(page.locator("#info")).toContainText("Odjazdy z najbliższego przystanku");
+  await expect(page.locator(".kurs").first()).toBeVisible();
+});
+
+test("skąd: bez zgody na lokalizację pokazuje zrozumiały komunikat", async ({ page }) => {
+  await otworz(page, "/?p=komara");
+  await page.evaluate(() => {
+    navigator.geolocation.getCurrentPosition = (ok, blad) => blad({ code: 1, message: "denied" });
+  });
+  await page.click("#wybierz");
+  await page.getByText("Najbliższy przystanek (moja lokalizacja)").click();
+  await expect(page.locator("#szukaj-wyniki")).toContainText("Brak zgody na lokalizację");
+  await expect(page.locator("#nazwa-przystanku")).toHaveText("Komara");
+});
+
+test("skąd: adres ustawia odjazdy z najbliższego przystanku i przetrwa odświeżenie", async ({ page }) => {
+  await otworz(page, "/?p=komara");
+  const [lat, lon] = await page.evaluate(() => window.PRZYSTANKI_GPS.dworcowa.p[0]);
+  await podstawAdresy(page, { features: [adres("Blok 1", "Kolejowa", lat + 0.0005, lon)] });
+  await wybierz(page, "skad", "kolejowa 1", "Blok 1, Kolejowa");
+  await expect(page.locator("#nazwa-przystanku")).toHaveText("🏠 Blok 1, Kolejowa");
+  await expect(page.locator("#skad-opis")).toContainText("przystanek: Dworcowa");
+  await page.goto(page.url());
+  await expect(page.locator("#nazwa-przystanku")).toHaveText("🏠 Blok 1, Kolejowa");
+});
+
+test("dokąd: przystanek → połączenia z krokami", async ({ page }) => {
+  await podstawAdresy(page, { features: [] });
+  const bledy = await otworz(page, "/?p=dworcowa");
+  await wybierz(page, "cel", "ciszewsk", "Ciszewskiego");
+  await expect(page.locator("#nazwa-celu")).toHaveText("Ciszewskiego");
+  await expect(page.locator('[data-tryb="odjazdy"]')).toHaveText("Połączenia");
+
+  const opcje = page.locator("#lista .opcja button");
   await expect(opcje.first()).toBeVisible();
   await expect(opcje.first().locator(".kierunek")).toHaveText(/^Na miejscu \d\d:\d\d$/);
   await opcje.first().click();
   await expect(page.locator(".kroki")).toContainText("Wysiądź: Ciszewskiego");
+
+  await page.click("#usun-cel");
+  await expect(page.locator('[data-tryb="odjazdy"]')).toHaveText("Odjazdy");
+  await expect(page.locator("#nazwa-celu")).toHaveText("Wybierz, żeby zobaczyć połączenia");
   expect(bledy).toEqual([]);
 });
 
-test("podróż: adres docelowy z wyszukiwarki i dojście pieszo", async ({ page }) => {
-  await otworz(page, "/?p=dworcowa&t=podroz");
+test("trasa kursu uwzględnia objaśnienia (żółty kurs omija Stamma Sklep)", async ({ page }) => {
+  await otworz(page, "/?p=dworcowa");
+  const kursy = page.locator(".kurs", { hasText: "Stamma / Zwinisław" });
+  const zolty = kursy.filter({ has: page.locator(".znaczek.zolty") }).first();
+  const zwykly = kursy.filter({ hasNot: page.locator(".znaczek.zolty") }).first();
+
+  await zolty.locator("> button").click();
+  await expect(zolty.locator(".trasa")).toContainText("Komara");
+  await expect(zolty.locator(".trasa")).not.toContainText("Stamma Sklep");
+
+  await zwykly.locator("> button").click();
+  await expect(zwykly.locator(".trasa")).toContainText("Stamma Sklep");
+});
+
+test("dokąd: adres z wyszukiwarki i dojście pieszo", async ({ page }) => {
+  await otworz(page, "/?p=dworcowa");
   const [lat, lon] = await page.evaluate(() => window.PRZYSTANKI_GPS.ciszewskiego.p[0]);
   // punkt ok. 200 m od przystanku Ciszewskiego
   await podstawAdresy(page, { features: [adres("Blok 7", "Testowa", lat + 0.0015, lon + 0.001)] });
-  await page.click("#dokad");
-  await page.fill("#dokad", "testowa 7");
-  const podp = page.locator("#dokad-podp .podpowiedz", { hasText: "Blok 7, Testowa" });
-  await expect(podp).toBeVisible();
-  await podp.click();
-  await expect(page.locator("#dokad")).toHaveValue("Blok 7, Testowa");
-  const pierwsza = page.locator("#podroz-lista .opcja button").first();
+  await wybierz(page, "cel", "testowa 7", "Blok 7, Testowa");
+  await expect(page.locator("#nazwa-celu")).toHaveText("🏠 Blok 7, Testowa");
+  const pierwsza = page.locator("#lista .opcja button").first();
   await expect(pierwsza).toBeVisible();
   await pierwsza.click();
   await expect(page.locator(".kroki")).toContainText("Dojdź do: Blok 7, Testowa");
 });
 
-test("podróż: start z GPS i zamiana kierunku", async ({ page, context }) => {
+test("⇅ zamienia skąd i dokąd", async ({ page }) => {
   await podstawAdresy(page, { features: [] });
-  await context.grantPermissions(["geolocation"]);
-  await otworz(page, "/?p=komara&t=podroz");
-  const [lat, lon] = await page.evaluate(() => window.PRZYSTANKI_GPS.dworcowa.p[0]);
-  await context.setGeolocation({ latitude: lat, longitude: lon });
-  await page.click("#skad");
-  await page.locator("#skad-podp .podpowiedz", { hasText: "Moja lokalizacja" }).click();
-  await page.click("#dokad");
-  await page.fill("#dokad", "pekanino");
-  await page.locator("#dokad-podp .podpowiedz", { hasText: "Pękanino Cmentarz" }).first().click();
-  await expect(page.locator("#skad")).toHaveValue("Moja lokalizacja");
-  await expect(page.locator("#podroz-lista > li").first()).toBeVisible();
-
+  await otworz(page, "/?p=dworcowa");
+  await expect(page.locator("#zamien")).toBeHidden();
+  await wybierz(page, "cel", "komara", "Komara");
   await page.click("#zamien");
-  await expect(page.locator("#skad")).toHaveValue("Pękanino Cmentarz");
-  await expect(page.locator("#dokad")).toHaveValue("Moja lokalizacja");
+  await expect(page.locator("#nazwa-przystanku")).toHaveText("Komara");
+  await expect(page.locator("#nazwa-celu")).toHaveText("Dworcowa");
 });
 
-test("podróż: gdy wyszukiwarka adresów nie działa, można wybrać przystanek", async ({ page }) => {
+test("gdy wyszukiwarka adresów nie działa, można wybrać przystanek", async ({ page }) => {
   await podstawAdresy(page, (route) => route.abort());
-  await otworz(page, "/?p=dworcowa&t=podroz");
-  await page.click("#dokad");
-  await page.fill("#dokad", "komara");
-  await expect(page.locator("#dokad-podp")).toContainText("Wyszukiwarka adresów nie odpowiada");
-  await expect(page.locator("#dokad-podp .podpowiedz", { hasText: "Komara" }).first()).toBeVisible();
+  await otworz(page, "/?p=dworcowa");
+  await page.click("#wybierz-cel");
+  await page.fill("#szukaj-pole", "komara");
+  await expect(page.locator("#szukaj-wyniki")).toContainText("Wyszukiwarka adresów nie odpowiada");
+  await expect(page.locator("#szukaj-wyniki .pozycja", { hasText: "Komara" }).first()).toBeVisible();
 });

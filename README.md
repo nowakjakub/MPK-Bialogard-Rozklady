@@ -22,13 +22,14 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
   kolejne kursy z godziną; kursy z dwóch linii o tej samej godzinie są połączone w jeden wiersz,
 - **dotknięcie kursu** pokazuje znaczenie oznaczeń, cały przebieg trasy z godzinami
   na kolejnych przystankach i link do tabliczki PDF,
-- **wyszukiwarka przystanków** (działa bez polskich znaków, np. „polcz petl”), z listą
-  **ulubionych ★** i ostatnio wybieranych,
-- **📍 najbliższe przystanki** według lokalizacji telefonu – 5 najbliższych z odległością i czasem dojścia pieszo,
-- **Podróż** – planer „skąd → dokąd”: start z GPS, adresu lub przystanku, cel jako adres lub przystanek.
-  Strona sprawdza przystanki w zasięgu dojścia (do ok. 1,2 km) i pokazuje, **o której wyjść** i **o której
-  będziesz na miejscu** (dojście + autobus + dojście), a gdy jest szybciej – także opcję pieszo,
-- **filtr kierunku** oraz **„Dokąd jadę?”** – tylko kursy, które tam dojeżdżają, z godziną dojazdu,
+- **Skąd** – jedno pole: wybierz przystanek, wpisz adres albo użyj **📍 najbliższego przystanku** (GPS).
+  Przy adresie lub lokalizacji odjazdy pokazują się z najbliższego przystanku (z odległością i czasem dojścia).
+  Wyszukiwanie działa bez polskich znaków (np. „polcz petl”), są też **ulubione ★** i ostatnio wybierane,
+- **Dokąd** (opcjonalnie) – takie samo pole pod spodem: przystanek lub adres. Po wybraniu zakładka
+  „Odjazdy” zmienia się w **Połączenia**: o której wyjść, którym autobusem i o której będziesz na miejscu
+  (dojście + autobus + dojście, dotknij, by zobaczyć kroki), a gdy szybciej – także opcja pieszo.
+  **⇅** zamienia skąd i dokąd, **✕** wraca do zwykłej tablicy odjazdów,
+- **filtr kierunku** na tablicy odjazdów,
 - **Przyjazdy** – szacowane godziny przyjazdu (działa też na pętlach),
 - **Rozkład** – pełna tabliczka godzinowa z zaznaczoną bieżącą godziną i przekreślonymi kursami, które już odjechały,
 - oznaczenie **ostatniego kursu** dnia i kursów **jutro**,
@@ -46,7 +47,7 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
 - ZKMB nie publikuje położenia przystanków, więc bierzemy je z [OpenStreetMap](https://www.openstreetmap.org/copyright).
   Kilku przystanków (np. Inkubator, Stamma Sklep) nie ma na mapie – ich położenie jest szacowane
   jako środek między sąsiednimi przystankami na trasie. Lokalizacja działa tylko przez https (GitHub Pages).
-- Planer podróży pokazuje połączenia **bez przesiadek**. Adresy wyszukuje [Photon](https://photon.komoot.io)
+- Połączenia są pokazywane **bez przesiadek**. Adresy wyszukuje [Photon](https://photon.komoot.io)
   (dane OpenStreetMap) – wpisany adres jest wysyłany do tej wyszukiwarki. Czas dojścia pieszo jest szacowany
   z odległości w linii prostej (+25% na ulice, 4,8 km/h).
 
@@ -84,7 +85,7 @@ GitHub Action [„Testy”](.github/workflows/testy.yml) uruchamia się przy ka�
 - **Dane i parser PDF** (`tests/test_*.py`) – poprawność `data/rozklad.js` (godziny, trasy,
   objaśnienia oznaczeń) oraz odczyt prawdziwej tabliczki PDF zapisanej w `tests/pdf/`,
 - **Strona w przeglądarce** (`tests/e2e/`, Playwright na ekranie telefonu) – odjazdy zgodne z rozkładem,
-  wyszukiwarka, ulubione, „Dokąd jadę?”, przyjazdy, pełny rozkład, święta, kursy „jutro”
+  wyszukiwarka, ulubione, skąd/dokąd (przystanek, adres, GPS), połączenia, przyjazdy, pełny rozkład, święta, kursy „jutro”
   i otwarcie każdego przystanku w każdej zakładce bez błędów.
 
 Lokalnie:
