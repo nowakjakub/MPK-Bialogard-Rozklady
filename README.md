@@ -1,5 +1,8 @@
 # MPK-Bialogard-Rozklady
 
+[![Testy](https://github.com/nowakjakub/MPK-Bialogard-Rozklady/actions/workflows/testy.yml/badge.svg)](https://github.com/nowakjakub/MPK-Bialogard-Rozklady/actions/workflows/testy.yml)
+[![Aktualizacja rozkładu](https://github.com/nowakjakub/MPK-Bialogard-Rozklady/actions/workflows/aktualizacja-rozkladu.yml/badge.svg)](https://github.com/nowakjakub/MPK-Bialogard-Rozklady/actions/workflows/aktualizacja-rozkladu.yml)
+
 Prosta strona do sprawdzania najbliższych **odjazdów** i **przyjazdów** autobusów
 ZKM Białogard na wybranym przystanku.
 
@@ -46,15 +49,39 @@ więc każda zmiana wmergowana do `master` po 1–2 minutach pojawia się pod li
 
 ## Aktualizacja rozkładu
 
-Gdy ZKMB zmieni rozkład (np. ferie, wakacje), uruchom:
+**Automatycznie:** GitHub Action [„Aktualizacja rozkładu”](.github/workflows/aktualizacja-rozkladu.yml)
+codziennie rano pobiera PDF-y z zkmb.pl i porównuje je z `data/rozklad.js`.
+Jeśli ZKMB coś zmienił, uruchamia testy i otwiera pull request z nowymi danymi –
+wystarczy go zmergować. Można ją też uruchomić ręcznie: *Actions → Aktualizacja rozkładu → Run workflow*.
+
+> Żeby Action mogła otwierać pull requesty, włącz w repozytorium:
+> *Settings → Actions → General → Workflow permissions →*
+> **„Allow GitHub Actions to create and approve pull requests”**.
+
+**Ręcznie:**
 
 ```bash
 pip install pymupdf
-python3 narzedzia/pobierz_rozklad.py
+python3 narzedzia/pobierz_rozklad.py            # pobierz i zapisz, jeśli coś się zmieniło
+python3 narzedzia/pobierz_rozklad.py --sprawdz  # tylko sprawdź (kod wyjścia 1 = dane nieaktualne)
 ```
 
-Skrypt pobierze wszystkie PDF-y, odczyta z nich godziny i nadpisze `data/rozklad.js`.
-Potem wystarczy zrobić commit i merge do `master`.
+## Testy
+
+GitHub Action [„Testy”](.github/workflows/testy.yml) uruchamia się przy każdym pull requeście i pushu do `master`:
+
+- **Dane i parser PDF** (`tests/test_*.py`) – poprawność `data/rozklad.js` (godziny, trasy,
+  objaśnienia oznaczeń) oraz odczyt prawdziwej tabliczki PDF zapisanej w `tests/pdf/`,
+- **Strona w przeglądarce** (`tests/e2e/`, Playwright na ekranie telefonu) – odjazdy zgodne z rozkładem,
+  wyszukiwarka, ulubione, „Dokąd jadę?”, przyjazdy, pełny rozkład, święta, kursy „jutro”
+  i otwarcie każdego przystanku w każdej zakładce bez błędów.
+
+Lokalnie:
+
+```bash
+pip install pymupdf && python3 -m unittest discover tests
+npm ci && npx playwright install chromium && npx playwright test
+```
 
 ## Pliki
 
@@ -66,3 +93,5 @@ Potem wystarczy zrobić commit i merge do `master`.
 | `sw.js`, `manifest.webmanifest`, `ikony/` | instalacja na telefonie i działanie offline |
 | `data/rozklad.js` | rozkład (generowany automatycznie – nie edytuj ręcznie) |
 | `narzedzia/pobierz_rozklad.py` | skrypt pobierający i odczytujący PDF-y z zkmb.pl |
+| `tests/` | testy danych, parsera PDF i strony |
+| `.github/workflows/` | automatyczne testy i codzienne sprawdzanie rozkładu |
