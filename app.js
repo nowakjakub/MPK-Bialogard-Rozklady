@@ -399,7 +399,7 @@
 
   function rysujFiltry() {
     el.filtry.innerHTML = "";
-    if (stan.tryb === "rozklad") return;
+    if (stan.tryb === "rozklad" || stan.tryb === "podroz") return;
     var kierunki = kierunkiPrzystanku();
     Object.keys(kierunki).forEach(function (k) { kierunki[k].linie.sort(porownajLinie); });
     var klucze = Object.keys(kierunki).sort(function (a, b) {
@@ -628,11 +628,17 @@
   function odswiez() {
     rysujNaglowek();
     rysujFiltry();
-    var rozklad = stan.tryb === "rozklad";
-    el.lista.hidden = rozklad;
-    el.info.hidden = rozklad;
+    var rozklad = stan.tryb === "rozklad", wPodrozy = stan.tryb === "podroz";
+    el.lista.hidden = rozklad || wPodrozy;
+    el.info.hidden = rozklad || wPodrozy;
     el.tabliczka.hidden = !rozklad;
-    if (rozklad) rysujTabliczke(); else rysujListe();
+    elP.sekcja.hidden = !wPodrozy;
+    if (rozklad) rysujTabliczke();
+    else if (wPodrozy) {
+      // domyślnie start z wybranego przystanku
+      if (!podroz.skad) podroz.skad = miejscePrzystanku(stan.przystanek);
+      rysujPodroz();
+    } else rysujListe();
     zapiszAdres();
   }
 
@@ -845,6 +851,364 @@
 
   function otworzCel() { otworzOkno(el.celOkno, el.celPole, rysujCele); }
 
+  // ---------- podróż: skąd → dokąd (adres, przystanek lub GPS) ----------
+
+  var PHOTON = "https://photon.komoot.io/api/";
+  var OBSZAR_ADRESOW = [15.92, 53.975, 16.03, 54.04]; // min lon, min lat, max lon, max lat – Białogard z okolicą
+  var PIESZO_M_NA_MIN = 80;        // ok. 4,8 km/h
+  var OBJAZD_PIESZO = 1.25;        // ulice nie idą w linii prostej
+  var ZASIEG_PIESZO = 1200;        // m – przystanki brane pod uwagę przy starcie i celu
+  var MAX_OPCJI = 5;
+
+  var elP = {
+    sekcja: $("podroz"), skad: $("skad"), dokad: $("dokad"),
+    skadPodp: $("skad-podp"), dokadPodp: $("dokad-podp"),
+    info: $("podroz-info"), lista: $("podroz-lista")
+  };
+  var podroz = { skad: wczytaj("podroz-skad", null), dokad: wczytaj("podroz-dokad", null), otwarta: null };
+
+  function minutPieszo(metry) {
+    return Math.max(1, Math.ceil(metry * OBJAZD_PIESZO / PIESZO_M_NA_MIN));
+  }
+
+  function punktPrzystanku(k) {
+    return GPS[k] ? GPS[k].p[0] : null;
+  }
+
+  function miejscePrzystanku(k) {
+    var p = punktPrzystanku(k);
+    return p ? { nazwa: DANE.przystanki[k], k: k, lat: p[0], lon: p[1], typ: "przystanek" } : null;
+  }
+
+  // przystanki w zasięgu dojścia: [{k, m, min}]
+  function przystankiWokol(miejsce) {
+    var punkt = [miejsce.lat, miejsce.lon];
+    var lista = najblizsze(punkt);
+    var wynik = lista.filter(function (x) { return x.m <= ZASIEG_PIESZO; });
+    if (wynik.length < 2) wynik = lista.slice(0, 3); // daleko od przystanków – bierzemy najbliższe
+    wynik = wynik.slice(0, 10).map(function (x) {
+      return { k: x.k, m: x.m, min: x.k === miejsce.k ? 0 : minutPieszo(x.m) };
+    });
+    if (miejsce.k && !wynik.some(function (x) { return x.k === miejsce.k; })) wynik.unshift({ k: miejsce.k, m: 0, min: 0 });
+    return wynik;
+  }
+
+  function planuj(skad, dokad, od) {
+    var teraz = od.getHours() * 60 + od.getMinutes();
+    var start = {}, cel = {};
+    przystankiWokol(skad).forEach(function (x) { start[x.k] = x; });
+    przystankiWokol(dokad).forEach(function (x) { cel[x.k] = x; });
+
+    var najlepsze = {};
+    [0, 1].forEach(function (przesuniecie) {
+      var dzien = new Date(od.getFullYear(), od.getMonth(), od.getDate() + przesuniecie);
+      var typ = typDnia(dzien);
+      DANE.tabliczki.forEach(function (t, ti) {
+        var s = start[t.k];
+        if (!s) return;
+        t.odjazdy[typ].forEach(function (o) {
+          var odjazd = naMinuty(o[0]) + przesuniecie * 1440;
+          var wyjscie = odjazd - s.min;
+          if (wyjscie < teraz || odjazd > teraz + 24 * 60) return;
+          for (var i = 1; i < t.trasa.length; i++) {
+            var c = cel[t.trasa[i].k];
+            if (!c || t.trasa[i].k === t.k || !przejezdza(t, o[1], i)) continue;
+            var jazda = jazdaDo(t, o[1], i);
+            if (jazda === null) continue;
+            var opcja = { t: t, linie: [t.linia], oznaczenie: o[1], odjazd: odjazd, wyjscie: wyjscie,
+              wsiadz: s, wysiadz: c, indeks: i, przyjazd: odjazd + jazda, naMiejscu: odjazd + jazda + c.min };
+            var klucz = ti + "|" + odjazd;
+            var byla = najlepsze[klucz];
+            if (!byla || opcja.naMiejscu < byla.naMiejscu ||
+                (opcja.naMiejscu === byla.naMiejscu && opcja.wysiadz.min < byla.wysiadz.min)) najlepsze[klucz] = opcja;
+          }
+        });
+      });
+    });
+
+    var opcje = [];
+    Object.keys(najlepsze).map(function (k) { return najlepsze[k]; })
+      // przy tej samej godzinie na miejscu wygrywa opcja z późniejszym wyjściem (np. wsiadanie bliżej celu)
+      .sort(function (a, b) { return a.naMiejscu - b.naMiejscu || b.wyjscie - a.wyjscie || a.wysiadz.min - b.wysiadz.min; })
+      .forEach(function (o) {
+        // ten sam kurs wpisany w dwie linie → jeden wiersz
+        var ten = opcje.filter(function (x) {
+          return x.odjazd === o.odjazd && x.wsiadz.k === o.wsiadz.k && x.wysiadz.k === o.wysiadz.k &&
+            kluczKierunku(x.t) === kluczKierunku(o.t);
+        })[0];
+        if (ten) { if (ten.linie.indexOf(o.t.linia) === -1) ten.linie.push(o.t.linia); return; }
+        // pomijamy opcje gorsze pod każdym względem (wcześniej wyjść i później być na miejscu)
+        var gorsza = opcje.some(function (x) { return x.wyjscie >= o.wyjscie && x.naMiejscu <= o.naMiejscu; });
+        if (!gorsza) opcje.push(o);
+      });
+    opcje.forEach(function (o) { o.linie.sort(porownajLinie); });
+
+    var metry = odleglosc([skad.lat, skad.lon], [dokad.lat, dokad.lon]);
+    var pieszo = { pieszo: true, metry: metry, min: minutPieszo(metry), wyjscie: teraz, naMiejscu: teraz + minutPieszo(metry) };
+    // autobus ma sens tylko, gdy cała podróż jest wyraźnie krótsza niż spacer
+    opcje = opcje.filter(function (o) { return o.naMiejscu - o.wyjscie <= pieszo.min - 3; });
+    return { opcje: opcje.slice(0, MAX_OPCJI), pieszo: pieszo };
+  }
+
+  // --- podpowiedzi (przystanki lokalnie + adresy z Photon) ---
+
+  var zapytanieAdresow = null;
+
+  function nazwaAdresu(f) {
+    var p = f.properties;
+    var ulica = p.street ? p.street + (p.housenumber ? " " + p.housenumber : "") : "";
+    var nazwa = p.name && p.name !== p.street ? p.name : "";
+    var glowna = [nazwa, ulica].filter(Boolean).join(", ") || p.city || "Miejsce";
+    var miasto = p.city && p.city !== "Białogard" ? p.city : (p.city ? "" : (p.county || ""));
+    return glowna + (miasto ? ", " + miasto : "");
+  }
+
+  function szukajAdresow(q, gotowe) {
+    if (zapytanieAdresow) zapytanieAdresow.abort();
+    if (!window.fetch || !window.AbortController) return gotowe([]);
+    zapytanieAdresow = new AbortController();
+    var url = PHOTON + "?limit=8&lat=54.007&lon=15.99&bbox=" + OBSZAR_ADRESOW.join(",") + "&q=" + encodeURIComponent(q);
+    fetch(url, { signal: zapytanieAdresow.signal }).then(function (r) { return r.json(); }).then(function (d) {
+      var widziane = {};
+      gotowe((d.features || []).map(function (f) {
+        var c = f.geometry.coordinates;
+        return { nazwa: nazwaAdresu(f), lat: c[1], lon: c[0], typ: "adres" };
+      }).filter(function (m) {
+        if (widziane[m.nazwa]) return false;
+        widziane[m.nazwa] = true;
+        return true;
+      }).slice(0, 5));
+    }).catch(function (e) { if (e.name !== "AbortError") gotowe(null); });
+  }
+
+  function ostatnieMiejsca() { return wczytaj("podroz-miejsca", []); }
+
+  function zapamietajMiejsce(m) {
+    if (m.typ === "gps") return;
+    var lista = ostatnieMiejsca().filter(function (x) { return x.nazwa !== m.nazwa; });
+    lista.unshift(m);
+    zapisz("podroz-miejsca", lista.slice(0, 6));
+  }
+
+  function podpowiedz(box, ikona, tekst, podpis, onclick) {
+    var b = dodaj(box, "button", "podpowiedz");
+    b.type = "button";
+    b.setAttribute("role", "option");
+    dodaj(b, "span", "ikona", ikona);
+    var t = dodaj(b, "span", "tekst", tekst);
+    if (podpis) dodaj(t, "span", "podpis", podpis);
+    // mousedown zamiast click: pole traci focus dopiero po wyborze
+    b.addEventListener("mousedown", function (e) { e.preventDefault(); });
+    b.addEventListener("click", onclick);
+  }
+
+  var opoznienie = null;
+
+  function pokazPodpowiedzi(ktore) {
+    var pole = ktore === "skad" ? elP.skad : elP.dokad;
+    var box = ktore === "skad" ? elP.skadPodp : elP.dokadPodp;
+    var q = pole.value.trim();
+    function wybierz(m) { ustawMiejsce(ktore, m); }
+    function rysuj(adresy) {
+      box.innerHTML = "";
+      if (!q) {
+        podpowiedz(box, "📍", "Moja lokalizacja", null, function () { wybierz({ nazwa: "Moja lokalizacja", typ: "gps" }); });
+        ostatnieMiejsca().forEach(function (m) {
+          podpowiedz(box, m.typ === "przystanek" ? "🚏" : "🕘", m.nazwa, null, function () { wybierz(m); });
+        });
+        return;
+      }
+      INDEKS.filter(function (x) { return pasuje(x.tekst, q); }).slice(0, 4).forEach(function (x) {
+        var m = miejscePrzystanku(x.k);
+        if (m) podpowiedz(box, "🚏", m.nazwa, "przystanek", function () { wybierz(m); });
+      });
+      if (adresy === undefined && q.length >= 3) dodaj(box, "div", "podpowiedz-info", "Szukam adresów…");
+      if (adresy === null) dodaj(box, "div", "podpowiedz-info", "Wyszukiwarka adresów nie odpowiada – wybierz przystanek.");
+      (adresy || []).forEach(function (m) {
+        podpowiedz(box, "🏠", m.nazwa, "adres", function () { wybierz(m); });
+      });
+      if (adresy && !adresy.length && !box.children.length) dodaj(box, "div", "podpowiedz-info", "Nic nie znaleziono.");
+    }
+    elP.sekcja.classList.add("podpowiada");
+    rysuj(q.length >= 3 ? undefined : []);
+    clearTimeout(opoznienie);
+    if (q.length >= 3) opoznienie = setTimeout(function () { szukajAdresow(q, rysuj); }, 350);
+  }
+
+  function ukryjPodpowiedzi() {
+    elP.skadPodp.innerHTML = "";
+    elP.dokadPodp.innerHTML = "";
+    elP.sekcja.classList.remove("podpowiada");
+  }
+
+  function ustawMiejsce(ktore, m) {
+    ukryjPodpowiedzi();
+    podroz[ktore] = m;
+    podroz.otwarta = null;
+    zapisz("podroz-" + ktore, m.typ === "gps" ? { nazwa: m.nazwa, typ: "gps" } : m);
+    zapamietajMiejsce(m);
+    (ktore === "skad" ? elP.skad : elP.dokad).blur();
+    rysujPodroz();
+  }
+
+  // zamienia miejsce "gps" na współrzędne; wywołuje gotowe(miejsce) albo pokazuje błąd
+  function ustalPunkt(m, gotowe) {
+    if (!m || m.typ !== "gps") return gotowe(m);
+    pobierzLokalizacje(function () {
+      if (lokalizacja.stan === "szukam") { elP.info.textContent = "Szukam Twojej lokalizacji…"; return; }
+      if (lokalizacja.stan === "blad") { elP.info.textContent = lokalizacja.blad; elP.lista.innerHTML = ""; return; }
+      gotowe({ nazwa: "Moja lokalizacja", typ: "gps", lat: lokalizacja.pozycja[0], lon: lokalizacja.pozycja[1] });
+    });
+  }
+
+  function rysujPodroz() {
+    elP.skad.value = podroz.skad ? podroz.skad.nazwa : "";
+    elP.dokad.value = podroz.dokad ? podroz.dokad.nazwa : "";
+    elP.lista.innerHTML = "";
+    if (!podroz.skad || !podroz.dokad) {
+      elP.info.textContent = !podroz.skad ? "Wybierz, skąd jedziesz." : "Wpisz, dokąd jedziesz – adres lub przystanek.";
+      return;
+    }
+    ustalPunkt(podroz.skad, function (skad) {
+      ustalPunkt(podroz.dokad, function (dokad) { rysujOpcje(skad, dokad); });
+    });
+  }
+
+  function rysujOpcje(skad, dokad) {
+    var od = wybranyCzas();
+    var teraz = od.getHours() * 60 + od.getMinutes();
+    var plan = planuj(skad, dokad, od);
+    elP.info.textContent = "";
+    elP.lista.innerHTML = "";
+
+    var p = plan.pieszo;
+    var pieszoLepsze = plan.opcje.length === 0 || p.naMiejscu <= plan.opcje[0].naMiejscu;
+    if (p.min <= 30 || pieszoLepsze) {
+      var li = dodaj(elP.lista, "li", "kurs opcja pieszo");
+      var b = dodaj(li, "div", "wiersz-opcji");
+      dodaj(dodaj(b, "span", "linie"), "span", "ikona-pieszo", "🚶");
+      var sr = dodaj(b, "span", "srodek");
+      dodaj(sr, "span", "kierunek", "Pieszo ok. " + opisZa(p.min));
+      dodaj(sr, "span", "pod", (p.metry < 1000 ? Math.round(p.metry / 10) * 10 + " m" : (p.metry / 1000).toFixed(1).replace(".", ",") + " km") +
+        " w linii prostej" + (pieszoLepsze ? " · najszybciej" : ""));
+      var pr = dodaj(b, "span", "prawa");
+      dodaj(pr, "span", "duzy", naTekst(p.naMiejscu)).style.display = "block";
+      dodaj(pr, "span", "maly", "na miejscu").style.display = "block";
+    }
+
+    if (!plan.opcje.length) {
+      dodaj(elP.lista, "li", "pusto", "Brak bezpośredniego autobusu między tymi miejscami w ciągu doby. " +
+        "Spróbuj wybrać przystanek bliżej celu albo sprawdź połączenie z przesiadką na tabliczkach.");
+      return;
+    }
+
+    plan.opcje.forEach(function (o) {
+      var id = o.linie.join(",") + "|" + o.odjazd + "|" + o.wsiadz.k;
+      var za = o.wyjscie - teraz;
+      var li = dodaj(elP.lista, "li", "kurs opcja" + (za <= 5 ? " zaraz" : ""));
+      var btn = dodaj(li, "button");
+      btn.type = "button";
+      btn.setAttribute("aria-expanded", String(podroz.otwarta === id));
+      var linie = dodaj(btn, "span", "linie");
+      o.linie.forEach(function (l) { odznakaLinii(linie, l); });
+      var sr = dodaj(btn, "span", "srodek");
+      dodaj(sr, "span", "kierunek", "Na miejscu " + naTekst(o.naMiejscu));
+      var pod = dodaj(sr, "span", "pod");
+      dodaj(pod, "span", "", naTekst(o.odjazd) + " " + DANE.przystanki[o.wsiadz.k] + " → " + DANE.przystanki[o.wysiadz.k]);
+      if (o.odjazd >= 1440) dodaj(pod, "span", "tag", "jutro");
+      znaki(o.oznaczenie).forEach(function (z) { znaczek(pod, z); });
+      var pr = dodaj(btn, "span", "prawa");
+      if (za < 60) {
+        dodaj(pr, "span", "duzy", za <= 0 ? "teraz" : za + " min").style.display = "block";
+        dodaj(pr, "span", "maly", "wyjdź " + naTekst(o.wyjscie)).style.display = "block";
+      } else {
+        dodaj(pr, "span", "duzy", naTekst(o.wyjscie)).style.display = "block";
+        dodaj(pr, "span", "maly", "wyjdź za " + opisZa(za)).style.display = "block";
+      }
+      btn.setAttribute("aria-label", "Linia " + o.linie.join(" i ") + ": wyjdź o " + naTekst(o.wyjscie) +
+        ", odjazd " + naTekst(o.odjazd) + " z przystanku " + DANE.przystanki[o.wsiadz.k] +
+        ", na miejscu ok. " + naTekst(o.naMiejscu));
+      btn.addEventListener("click", function () {
+        podroz.otwarta = podroz.otwarta === id ? null : id;
+        rysujOpcje(skad, dokad);
+      });
+      if (podroz.otwarta === id) rysujSzczegolyPodrozy(li, o, skad, dokad);
+    });
+  }
+
+  function krok(ol, klasa, godzina, tekst, podpis) {
+    var li = dodaj(ol, "li", klasa);
+    var t = dodaj(li, "span", "");
+    t.textContent = tekst;
+    if (podpis) dodaj(t, "span", "podpis", podpis);
+    dodaj(li, "span", "g", godzina);
+  }
+
+  function rysujSzczegolyPodrozy(li, o, skad, dokad) {
+    var box = dodaj(li, "div", "szczegoly");
+    var ol = dodaj(box, "ol", "trasa kroki");
+    var nazwaWsiadz = DANE.przystanki[o.wsiadz.k], nazwaWysiadz = DANE.przystanki[o.wysiadz.k];
+    if (o.wsiadz.min > 0) {
+      krok(ol, "pieszo", naTekst(o.wyjscie), "🚶 Wyjdź z: " + skad.nazwa,
+        "ok. " + o.wsiadz.min + " min pieszo na przystanek " + nazwaWsiadz);
+    }
+    krok(ol, "tu", naTekst(o.odjazd), "🚌 " + nazwaWsiadz + " – linia " + o.linie.join("/"), "kierunek " + o.t.kierunek);
+    var przebiegKursu = przebieg(o.t, o.odjazd, o.oznaczenie);
+    var j = przebiegKursu.map(function (x) { return x.k; }).indexOf(o.wysiadz.k);
+    var posrednie = j > 1 ? przebiegKursu.slice(1, j) : [];
+    if (posrednie.length) {
+      krok(ol, "posrednie", "", posrednie.length + " " + (posrednie.length === 1 ? "przystanek" : posrednie.length < 5 ? "przystanki" : "przystanków") + " po drodze",
+        posrednie.map(function (x) { return x.n; }).join(", "));
+    }
+    krok(ol, "cel", "ok. " + naTekst(o.przyjazd), "Wysiądź: " + nazwaWysiadz);
+    if (o.wysiadz.min > 0) {
+      krok(ol, "pieszo", "ok. " + naTekst(o.naMiejscu), "🚶 Dojdź do: " + dokad.nazwa, "ok. " + o.wysiadz.min + " min pieszo");
+    }
+    znaki(o.oznaczenie).forEach(function (z) {
+      var r = dodaj(box, "div", "objasnienie");
+      znaczek(r, z);
+      dodaj(r, "span", "", o.t.obj[z] || "oznaczenie w rozkładzie – szczegóły w tabliczce PDF");
+    });
+    var linki = dodaj(box, "div", "linki");
+    var odj = dodaj(linki, "button", "", "Odjazdy z: " + nazwaWsiadz);
+    odj.type = "button";
+    odj.addEventListener("click", function () { ustawPrzystanek(o.wsiadz.k); ustawTryb("odjazdy"); });
+    var a = dodaj(linki, "a", "", "Tabliczka PDF ↗");
+    a.href = o.t.pdf; a.target = "_blank"; a.rel = "noopener";
+  }
+
+  function inicjujPodroz() {
+    if (!Object.keys(GPS).length) return;
+    ["skad", "dokad"].forEach(function (ktore) {
+      var pole = elP[ktore];
+      // po wejściu w pole pokazujemy od razu 📍 i ostatnie miejsca; wybór wraca, jeśli nic nie wybierzesz
+      pole.addEventListener("focus", function () { pole.value = ""; pokazPodpowiedzi(ktore); });
+      pole.addEventListener("input", function () { pokazPodpowiedzi(ktore); });
+      pole.addEventListener("blur", function () {
+        setTimeout(function () {
+          if (document.activeElement === pole) return;
+          (ktore === "skad" ? elP.skadPodp : elP.dokadPodp).innerHTML = "";
+          if (!elP.skadPodp.children.length && !elP.dokadPodp.children.length) elP.sekcja.classList.remove("podpowiada");
+          pole.value = podroz[ktore] ? podroz[ktore].nazwa : "";
+        }, 150);
+      });
+      pole.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter") return;
+        var pierwsza = (ktore === "skad" ? elP.skadPodp : elP.dokadPodp).querySelector(".podpowiedz");
+        if (pierwsza) { e.preventDefault(); pierwsza.click(); }
+      });
+    });
+    $("zamien").addEventListener("click", function () {
+      var s = podroz.skad;
+      podroz.skad = podroz.dokad;
+      podroz.dokad = s;
+      zapisz("podroz-skad", podroz.skad);
+      zapisz("podroz-dokad", podroz.dokad);
+      podroz.otwarta = null;
+      rysujPodroz();
+    });
+  }
+
   // ---------- start ----------
 
   var najnowsza = DANE.waznyOd.slice().sort(function (a, b) {
@@ -859,7 +1223,9 @@
   if (!DANE.przystanki[startowy]) startowy = "dworcowa";
   if (!DANE.przystanki[startowy]) startowy = Object.keys(DANE.przystanki).sort(porownajNazwy)[0];
   ustawPrzystanek(startowy);
-  if (["odjazdy", "przyjazdy", "rozklad"].indexOf(parametry.get("t")) !== -1) stan.tryb = parametry.get("t");
+  if (["odjazdy", "przyjazdy", "rozklad", "podroz"].indexOf(parametry.get("t")) !== -1) stan.tryb = parametry.get("t");
+  inicjujPodroz();
+  if (!Object.keys(GPS).length) document.querySelector('[data-tryb="podroz"]').hidden = true;
 
   el.wybierz.addEventListener("click", function () { otworzOkno(el.szukaj, el.szukajPole, rysujWyszukiwarke); });
   var bliskoBtn = $("blisko");
@@ -904,7 +1270,10 @@
   odswiez();
 
   // odświeżanie co 20 s i po powrocie do karty
-  function odswiezJesliTeraz() { if (!el.czas.value && stan.tryb !== "rozklad") odswiez(); }
+  function odswiezJesliTeraz() {
+    var pisze = document.activeElement === elP.skad || document.activeElement === elP.dokad;
+    if (!el.czas.value && stan.tryb !== "rozklad" && !pisze) odswiez();
+  }
   setInterval(odswiezJesliTeraz, 20000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) odswiezJesliTeraz(); });
 

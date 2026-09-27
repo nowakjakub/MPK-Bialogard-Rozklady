@@ -156,3 +156,79 @@ test("📍 bez zgody na lokalizację pokazuje zrozumiały komunikat", async ({ p
   await expect(page.locator(".w-poblizu")).toContainText("Brak zgody na lokalizację");
   await expect(page.locator(".w-poblizu button", { hasText: "Spróbuj ponownie" })).toBeVisible();
 });
+
+// ---------- Podróż: skąd → dokąd ----------
+
+// Photon (wyszukiwarka adresów) jest podstawiony, żeby testy nie zależały od zewnętrznego serwera.
+async function podstawAdresy(page, odpowiedz) {
+  await page.route("https://photon.komoot.io/**", (route) =>
+    typeof odpowiedz === "function" ? odpowiedz(route) : route.fulfill({
+      json: odpowiedz, headers: { "access-control-allow-origin": "*" },
+    }));
+}
+
+function adres(nazwa, ulica, lat, lon) {
+  return { type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] },
+    properties: { name: nazwa, street: ulica, city: "Białogard", type: "house" } };
+}
+
+test("podróż: z przystanku do przystanku pokazuje autobus i kroki", async ({ page }) => {
+  await podstawAdresy(page, { features: [] });
+  const bledy = await otworz(page, "/?p=dworcowa&t=podroz");
+  await expect(page.locator("#skad")).toHaveValue("Dworcowa");
+  await page.click("#dokad");
+  await page.fill("#dokad", "ciszewsk");
+  await page.locator("#dokad-podp .podpowiedz", { hasText: "Ciszewskiego" }).first().click();
+
+  const opcje = page.locator("#podroz-lista .opcja button");
+  await expect(opcje.first()).toBeVisible();
+  await expect(opcje.first().locator(".kierunek")).toHaveText(/^Na miejscu \d\d:\d\d$/);
+  await opcje.first().click();
+  await expect(page.locator(".kroki")).toContainText("Wysiądź: Ciszewskiego");
+  expect(bledy).toEqual([]);
+});
+
+test("podróż: adres docelowy z wyszukiwarki i dojście pieszo", async ({ page }) => {
+  await otworz(page, "/?p=dworcowa&t=podroz");
+  const [lat, lon] = await page.evaluate(() => window.PRZYSTANKI_GPS.ciszewskiego.p[0]);
+  // punkt ok. 200 m od przystanku Ciszewskiego
+  await podstawAdresy(page, { features: [adres("Blok 7", "Testowa", lat + 0.0015, lon + 0.001)] });
+  await page.click("#dokad");
+  await page.fill("#dokad", "testowa 7");
+  const podp = page.locator("#dokad-podp .podpowiedz", { hasText: "Blok 7, Testowa" });
+  await expect(podp).toBeVisible();
+  await podp.click();
+  await expect(page.locator("#dokad")).toHaveValue("Blok 7, Testowa");
+  const pierwsza = page.locator("#podroz-lista .opcja button").first();
+  await expect(pierwsza).toBeVisible();
+  await pierwsza.click();
+  await expect(page.locator(".kroki")).toContainText("Dojdź do: Blok 7, Testowa");
+});
+
+test("podróż: start z GPS i zamiana kierunku", async ({ page, context }) => {
+  await podstawAdresy(page, { features: [] });
+  await context.grantPermissions(["geolocation"]);
+  await otworz(page, "/?p=komara&t=podroz");
+  const [lat, lon] = await page.evaluate(() => window.PRZYSTANKI_GPS.dworcowa.p[0]);
+  await context.setGeolocation({ latitude: lat, longitude: lon });
+  await page.click("#skad");
+  await page.locator("#skad-podp .podpowiedz", { hasText: "Moja lokalizacja" }).click();
+  await page.click("#dokad");
+  await page.fill("#dokad", "pekanino");
+  await page.locator("#dokad-podp .podpowiedz", { hasText: "Pękanino Cmentarz" }).first().click();
+  await expect(page.locator("#skad")).toHaveValue("Moja lokalizacja");
+  await expect(page.locator("#podroz-lista > li").first()).toBeVisible();
+
+  await page.click("#zamien");
+  await expect(page.locator("#skad")).toHaveValue("Pękanino Cmentarz");
+  await expect(page.locator("#dokad")).toHaveValue("Moja lokalizacja");
+});
+
+test("podróż: gdy wyszukiwarka adresów nie działa, można wybrać przystanek", async ({ page }) => {
+  await podstawAdresy(page, (route) => route.abort());
+  await otworz(page, "/?p=dworcowa&t=podroz");
+  await page.click("#dokad");
+  await page.fill("#dokad", "komara");
+  await expect(page.locator("#dokad-podp")).toContainText("Wyszukiwarka adresów nie odpowiada");
+  await expect(page.locator("#dokad-podp .podpowiedz", { hasText: "Komara" }).first()).toBeVisible();
+});

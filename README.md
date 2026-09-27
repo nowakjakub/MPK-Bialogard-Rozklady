@@ -25,6 +25,9 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
 - **wyszukiwarka przystanków** (działa bez polskich znaków, np. „polcz petl”), z listą
   **ulubionych ★** i ostatnio wybieranych,
 - **📍 najbliższe przystanki** według lokalizacji telefonu – 5 najbliższych z odległością i czasem dojścia pieszo,
+- **Podróż** – planer „skąd → dokąd”: start z GPS, adresu lub przystanku, cel jako adres lub przystanek.
+  Strona sprawdza przystanki w zasięgu dojścia (do ok. 1,2 km) i pokazuje, **o której wyjść** i **o której
+  będziesz na miejscu** (dojście + autobus + dojście), a gdy jest szybciej – także opcję pieszo,
 - **filtr kierunku** oraz **„Dokąd jadę?”** – tylko kursy, które tam dojeżdżają, z godziną dojazdu,
 - **Przyjazdy** – szacowane godziny przyjazdu (działa też na pętlach),
 - **Rozkład** – pełna tabliczka godzinowa z zaznaczoną bieżącą godziną i przekreślonymi kursami, które już odjechały,
@@ -43,6 +46,9 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
 - ZKMB nie publikuje położenia przystanków, więc bierzemy je z [OpenStreetMap](https://www.openstreetmap.org/copyright).
   Kilku przystanków (np. Inkubator, Stamma Sklep) nie ma na mapie – ich położenie jest szacowane
   jako środek między sąsiednimi przystankami na trasie. Lokalizacja działa tylko przez https (GitHub Pages).
+- Planer podróży pokazuje połączenia **bez przesiadek**. Adresy wyszukuje [Photon](https://photon.komoot.io)
+  (dane OpenStreetMap) – wpisany adres jest wysyłany do tej wyszukiwarki. Czas dojścia pieszo jest szacowany
+  z odległości w linii prostej (+25% na ulice, 4,8 km/h).
 
 ## Uruchomienie lokalnie
 
