@@ -11,25 +11,30 @@ Dane pochodzą z tabliczek PDF na https://www.zkmb.pl/rozklad-jazdy/
 ## Na telefonie
 
 Otwórz link powyżej i wybierz w przeglądarce **„Dodaj do ekranu głównego”** –
-będziesz mieć ikonkę jak zwykłą aplikację, a strona zapamięta Twój przystanek.
+strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez internetu.
 
 ## Co umie
 
-- wybór przystanku (zapamiętywany w przeglądarce),
-- **Odjazdy**: linia, kierunek, godzina, „za ile minut”, objaśnienia oznaczeń z rozkładu i link do tabliczki PDF,
-- **Dokąd jadę**: pokazuje tylko kursy, które tam dojeżdżają (z uwzględnieniem wariantów tras
-  i kursów skróconych), oraz przybliżoną godzinę dojazdu,
-- **Przyjazdy**: szacowana godzina przyjazdu (odjazd z wcześniejszego przystanku + czas jazdy) –
-  działa też na pętlach, które nie mają własnych tabliczek,
-- rozpoznaje dzień powszedni oraz soboty, niedziele i święta (także ruchome, np. Wielkanoc),
-- sprawdzenie rozkładu na inną datę i godzinę,
-- tryb ciemny i widok dopasowany do telefonu.
+- **Odjazdy** jak na tablicy elektronicznej: numer linii, kierunek i duże odliczanie („6 min”),
+  kolejne kursy z godziną; kursy z dwóch linii o tej samej godzinie są połączone w jeden wiersz,
+- **dotknięcie kursu** pokazuje znaczenie oznaczeń, cały przebieg trasy z godzinami
+  na kolejnych przystankach i link do tabliczki PDF,
+- **wyszukiwarka przystanków** (działa bez polskich znaków, np. „polcz petl”), z listą
+  **ulubionych ★** i ostatnio wybieranych,
+- **filtr kierunku** oraz **„Dokąd jadę?”** – tylko kursy, które tam dojeżdżają, z godziną dojazdu,
+- **Przyjazdy** – szacowane godziny przyjazdu (działa też na pętlach),
+- **Rozkład** – pełna tabliczka godzinowa z zaznaczoną bieżącą godziną i przekreślonymi kursami, które już odjechały,
+- oznaczenie **ostatniego kursu** dnia i kursów **jutro**,
+- rozpoznaje dni powszednie, soboty, niedziele i święta (także ruchome, np. Wielkanoc),
+- link do konkretnego przystanku, np. `?p=dworcowa` – można go zapisać w zakładkach,
+- tryb ciemny, duże przyciski wygodne na telefonie.
 
 ## Znane ograniczenia
 
 - Przyjazdy i godziny dojazdu są **szacowane** z kolumny „czas jazdy” w PDF-ach.
   Niektóre tabliczki ZKMB mają w niej błędy, więc wynik może się różnić o kilka minut.
-- Ten sam kurs bywa wpisany w rozkładach dwóch linii (np. 1 i 2), więc może pojawić się dwa razy.
+- Ten sam kurs bywa wpisany w rozkładach dwóch linii (np. 1 i 2). W Odjazdach takie kursy są łączone,
+  ale w Przyjazdach (liczonych szacunkowo) rzadko ten sam autobus może pojawić się dwa razy.
 - Tolerancja punktualności wg ZKMB: +1 / −3 min. W razie wątpliwości sprawdź tabliczkę PDF.
 
 ## Uruchomienie lokalnie
@@ -55,7 +60,9 @@ Potem wystarczy zrobić commit i merge do `master`.
 
 | Plik | Co to jest |
 | --- | --- |
-| `index.html` | wygląd strony |
-| `app.js` | logika: szukanie odjazdów, przyjazdów, rozpoznawanie dni i świąt |
+| `index.html` | układ strony |
+| `styl.css` | wygląd (kolory, tryb ciemny, układ na telefon) |
+| `app.js` | logika: odjazdy, przyjazdy, trasa kursu, wyszukiwarka, rozpoznawanie dni i świąt |
+| `sw.js`, `manifest.webmanifest`, `ikony/` | instalacja na telefonie i działanie offline |
 | `data/rozklad.js` | rozkład (generowany automatycznie – nie edytuj ręcznie) |
 | `narzedzia/pobierz_rozklad.py` | skrypt pobierający i odczytujący PDF-y z zkmb.pl |
