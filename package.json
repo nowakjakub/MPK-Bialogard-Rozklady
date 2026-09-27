@@ -1,0 +1,11 @@
+{
+  "name": "mpk-bialogard-rozklady",
+  "private": true,
+  "description": "Testy strony z rozkładem jazdy ZKM Białogard",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

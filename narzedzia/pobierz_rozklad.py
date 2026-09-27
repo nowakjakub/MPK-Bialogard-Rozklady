@@ -3,17 +3,22 @@
 
 Użycie:
     pip install pymupdf
-    python3 narzedzia/pobierz_rozklad.py
+    python3 narzedzia/pobierz_rozklad.py            # pobierz i zapisz, jeśli coś się zmieniło
+    python3 narzedzia/pobierz_rozklad.py --sprawdz  # tylko sprawdź (kod 1 = dane nieaktualne)
 
 Każdy PDF na zkmb.pl to jedna tabliczka: linia + przystanek + kierunek.
 Skrypt czyta z niego godziny odjazdów (dzień powszedni oraz sobota/niedziela),
 listę przystanków z czasem jazdy i objaśnienia oznaczeń.
 """
+import argparse
+import concurrent.futures
 import datetime
+import http.client
 import json
 import os
 import re
 import sys
+import time
 import unicodedata
 import urllib.request
 
@@ -47,10 +52,17 @@ def klucz(nazwa):
     return ALIASY.get(n, n)
 
 
-def pobierz(url):
+def pobierz(url, proby=4):
+    """Pobiera plik; serwer ZKMB czasem się zawiesza, więc ponawiamy z rosnącą przerwą."""
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (rozklad-bialogard)"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read()
+    for proba in range(proby):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.read()
+        except (OSError, http.client.HTTPException) as e:
+            if proba == proby - 1:
+                raise RuntimeError(f"Nie udało się pobrać {url}: {e}") from e
+            time.sleep(2 ** proba)
 
 
 def wiersze(slowa, tol=4):
@@ -133,14 +145,23 @@ def czytaj_pdf(pdf, nazwa_pliku=""):
     nazwy = [w for w in W if w[1] > lista[3] and lista[0] - 3 <= w[0] < czas[0] - 3 and w[1] < koniec_tabeli]
     czasy = [w for w in W if (w[1] + w[3]) / 2 > czas[3] + 2 and w[0] >= czas[0] - 6 and w[1] < koniec_tabeli
              and w[4] != "jazdy"]
-    kolumny = sorted({round(w[0] / 12) for w in czasy})
+    # kolumny czasu jazdy: nowa kolumna dopiero przy wyraźnej przerwie (literki bywają lekko przesunięte)
+    granice = []
+    for x in sorted(w[0] for w in czasy):
+        if not granice or x - granice[-1][1] > 12:
+            granice.append([x, x])
+        else:
+            granice[-1][1] = x
+
+    def kolumna(x):
+        return next(i for i, (a, b) in enumerate(granice) if a - 0.5 <= x <= b + 0.5)
     for y, ws in wiersze(nazwy):
         nazwa_p = tekst(ws)
         nz = "(NŻ)" in nazwa_p
-        wiersz = {"n": nazwa_p.replace("(NŻ)", "").strip(), "m": [None] * len(kolumny)}
+        wiersz = {"n": nazwa_p.replace("(NŻ)", "").strip(), "m": [None] * len(granice)}
         for o in czasy:
             if abs((o[1] + o[3]) / 2 - y) < 5:
-                k = kolumny.index(round(o[0] / 12))
+                k = kolumna(o[0])
                 wiersz["m"][k] = int(o[4]) if o[4].isdigit() else o[4]
         if nz:
             wiersz["nz"] = 1
@@ -165,17 +186,24 @@ def czytaj_pdf(pdf, nazwa_pliku=""):
             "trasa": trasa, "obj": obj, "uwagi": uwagi}
 
 
-def main():
+def data_iso(ddmmrrrr):
+    d, m, r = ddmmrrrr.split(".")
+    return f"{r}-{m}-{d}"
+
+
+def zbuduj_dane():
     html = pobierz(STRONA).decode("utf-8", "replace")
     linki = sorted(set(re.findall(r'href="([^"]+/rozklad/[^"]+\.pdf)"', html)))
     if not linki:
         sys.exit("Nie znalazłem żadnych PDF-ów z rozkładem na " + STRONA)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pula:
+        pliki = list(pula.map(pobierz, linki))
+
     tabliczki = []
-    for url in linki:
-        m = re.search(r"/rozklad/([^/]+)/([^/]+)/([^/]+)$", url)
-        rodzaj, linia, plik = m.groups()
-        t = czytaj_pdf(pobierz(url), plik)
-        t = {"linia": linia, "rodzaj": rodzaj, "pdf": url, **t}
+    for url, pdf in zip(linki, pliki):
+        rodzaj, linia, plik = re.search(r"/rozklad/([^/]+)/([^/]+)/([^/]+)$", url).groups()
+        t = {"linia": linia, "rodzaj": rodzaj, "pdf": url, **czytaj_pdf(pdf, plik)}
         tabliczki.append(t)
         print(f"linia {linia:>2}  {t['przystanek']:<35} → {t['kierunek']}")
 
@@ -187,19 +215,75 @@ def main():
         for w in t["trasa"]:
             przystanki.setdefault(w["k"], w["n"])
 
-    dane = {
+    return {
         "zrodlo": STRONA,
         "przystanki": przystanki,
         "pobrano": datetime.date.today().isoformat(),
-        "waznyOd": sorted({t["waznyOd"] for t in tabliczki if t["waznyOd"]}),
+        "waznyOd": sorted({t["waznyOd"] for t in tabliczki if t["waznyOd"]}, key=data_iso),
         "tabliczki": tabliczki,
     }
+
+
+def wczytaj_obecne():
+    try:
+        with open(WYJSCIE, encoding="utf-8") as f:
+            tekst = f.read()
+        return json.loads(tekst[tekst.index("=") + 1:].strip().rstrip(";"))
+    except (OSError, ValueError):
+        return None
+
+
+def bez_daty(dane):
+    """Dane do porównania: bez daty pobrania i niezależnie od kolejności dat ważności."""
+    if not dane:
+        return None
+    wynik = {k: v for k, v in dane.items() if k != "pobrano"}
+    wynik["waznyOd"] = sorted(wynik.get("waznyOd", []), key=data_iso)
+    return wynik
+
+
+def opisz_roznice(stare, nowe):
+    """Krótki raport, co się zmieniło w rozkładzie."""
+    if not stare:
+        return ["brak poprzednich danych"]
+    a = {t["pdf"]: t for t in stare["tabliczki"]}
+    b = {t["pdf"]: t for t in nowe["tabliczki"]}
+    wynik = []
+    for u in sorted(set(b) - set(a)):
+        wynik.append("nowa tabliczka: " + u.rsplit("/", 1)[-1])
+    for u in sorted(set(a) - set(b)):
+        wynik.append("usunięta tabliczka: " + u.rsplit("/", 1)[-1])
+    for u in sorted(set(a) & set(b)):
+        pola = [k for k in b[u] if a[u].get(k) != b[u][k]]
+        if pola:
+            wynik.append(f"zmieniona tabliczka: {u.rsplit('/', 1)[-1]} ({', '.join(pola)})")
+    if stare.get("waznyOd") != nowe.get("waznyOd"):
+        wynik.append(f"daty ważności: {stare.get('waznyOd')} → {nowe.get('waznyOd')}")
+    return wynik or ["inne zmiany w danych"]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--sprawdz", action="store_true",
+                        help="tylko sprawdź, czy data/rozklad.js jest aktualny (kod wyjścia 1 = nieaktualny)")
+    args = parser.parse_args()
+
+    nowe = zbuduj_dane()
+    stare = wczytaj_obecne()
+    if bez_daty(stare) == bez_daty(nowe):
+        print(f"\nRozkład jest aktualny ({len(nowe['tabliczki'])} tabliczek, bez zmian od {stare['pobrano']}).")
+        return
+    print("\nRozkład na zkmb.pl różni się od data/rozklad.js:")
+    for linia in opisz_roznice(stare, nowe):
+        print(" -", linia)
+    if args.sprawdz:
+        sys.exit(1)
     with open(WYJSCIE, "w", encoding="utf-8") as f:
         f.write("// Wygenerowane przez narzedzia/pobierz_rozklad.py – nie edytuj ręcznie.\n")
         f.write("window.ROZKLAD = ")
-        json.dump(dane, f, ensure_ascii=False, separators=(",", ":"))
+        json.dump(nowe, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
-    print(f"\nZapisano {len(tabliczki)} tabliczek do {os.path.relpath(WYJSCIE)}")
+    print(f"Zapisano {len(nowe['tabliczki'])} tabliczek do {os.path.relpath(WYJSCIE)}")
 
 
 if __name__ == "__main__":

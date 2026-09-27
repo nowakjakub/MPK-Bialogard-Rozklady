@@ -1,0 +1,70 @@
+name: Aktualizacja rozkładu
+
+# Codziennie sprawdza, czy ZKMB zmienił PDF-y z rozkładem. Jeśli tak – pobiera nowe dane,
+# uruchamia testy i otwiera pull request ze zmianami do sprawdzenia.
+on:
+  schedule:
+    - cron: "17 3 * * *"   # codziennie ok. 5:17 czasu polskiego
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: aktualizacja-rozkladu
+  cancel-in-progress: false
+
+jobs:
+  aktualizacja:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pymupdf
+
+      - name: Pobierz rozkład z zkmb.pl
+        id: pobierz
+        run: |
+          python narzedzia/pobierz_rozklad.py | tee pobieranie.log
+          if git diff --quiet -- data/rozklad.js; then
+            echo "zmiany=nie" >> "$GITHUB_OUTPUT"
+            echo "### ✅ Rozkład jest aktualny" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "zmiany=tak" >> "$GITHUB_OUTPUT"
+            {
+              echo "### 🔄 Rozkład na zkmb.pl się zmienił"
+              echo '```'
+              sed -n '/różni się/,$p' pobieranie.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo 'raport<<KONIEC'
+              sed -n '/różni się/,$p' pobieranie.log
+              echo 'KONIEC'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Testy nowych danych
+        if: steps.pobierz.outputs.zmiany == 'tak'
+        run: python -m unittest discover tests -v
+
+      - name: Otwórz pull request
+        if: steps.pobierz.outputs.zmiany == 'tak'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automat/aktualizacja-rozkladu
+          delete-branch: true
+          add-paths: data/rozklad.js
+          commit-message: "Aktualizacja rozkładu z zkmb.pl"
+          title: "Aktualizacja rozkładu z zkmb.pl"
+          body: |
+            Automatyczne sprawdzenie wykryło zmiany w tabliczkach PDF na https://www.zkmb.pl/rozklad-jazdy/.
+
+            ```
+            ${{ steps.pobierz.outputs.raport }}
+            ```
+
+            Testy danych przeszły. Sprawdź stronę i zmerguj, żeby opublikować nowy rozkład.
