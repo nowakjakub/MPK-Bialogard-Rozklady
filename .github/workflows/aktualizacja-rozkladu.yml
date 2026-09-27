@@ -47,6 +47,11 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Uzupełnij położenie przystanków (OpenStreetMap)
+        if: steps.pobierz.outputs.zmiany == 'tak'
+        continue-on-error: true
+        run: python narzedzia/pobierz_gps.py
+
       - name: Testy nowych danych
         if: steps.pobierz.outputs.zmiany == 'tak'
         run: python -m unittest discover tests -v
@@ -57,7 +62,9 @@ jobs:
         with:
           branch: automat/aktualizacja-rozkladu
           delete-branch: true
-          add-paths: data/rozklad.js
+          add-paths: |
+            data/rozklad.js
+            data/przystanki_gps.js
           commit-message: "Aktualizacja rozkładu z zkmb.pl"
           title: "Aktualizacja rozkładu z zkmb.pl"
           body: |

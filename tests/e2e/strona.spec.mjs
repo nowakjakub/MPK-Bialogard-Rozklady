@@ -130,3 +130,29 @@ test("wszystkie przystanki i zakładki otwierają się bez błędów", async ({ 
   }
   expect(bledy).toEqual([]);
 });
+
+test("📍 pokazuje najbliższe przystanki według lokalizacji", async ({ page, context }) => {
+  await context.grantPermissions(["geolocation"]);
+  await otworz(page, "/?p=komara");
+  const dworcowa = await page.evaluate(() => window.PRZYSTANKI_GPS.dworcowa.p[0]);
+  await context.setGeolocation({ latitude: dworcowa[0], longitude: dworcowa[1] });
+  await page.click("#blisko");
+  const pierwszy = page.locator(".w-poblizu .pozycja").first();
+  await expect(pierwszy.locator(".n")).toContainText("Dworcowa");
+  await expect(pierwszy.locator(".odleglosc")).toContainText("0 m");
+  await expect(page.locator(".w-poblizu .pozycja")).toHaveCount(5);
+  // pole wyszukiwania nie może dostać kursora – na telefonie klawiatura zasłoniłaby listę
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).not.toBe("szukaj-pole");
+  await pierwszy.click();
+  await expect(page.locator("#nazwa-przystanku")).toHaveText("Dworcowa");
+});
+
+test("📍 bez zgody na lokalizację pokazuje zrozumiały komunikat", async ({ page }) => {
+  await otworz(page, "/?p=komara");
+  await page.evaluate(() => {
+    navigator.geolocation.getCurrentPosition = (ok, blad) => blad({ code: 1, message: "denied" });
+  });
+  await page.click("#blisko");
+  await expect(page.locator(".w-poblizu")).toContainText("Brak zgody na lokalizację");
+  await expect(page.locator(".w-poblizu button", { hasText: "Spróbuj ponownie" })).toBeVisible();
+});

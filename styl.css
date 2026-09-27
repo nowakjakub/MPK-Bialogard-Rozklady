@@ -199,6 +199,10 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 .grupa { border: 1px solid var(--ramka); border-radius: 12px; overflow: hidden; }
 .grupa .pozycja:last-child { border-bottom: 0; }
 .pozycja .n { font-weight: 600; }
+.pozycja .odleglosc { display: block; font-weight: 400; font-size: .8rem; color: var(--szary); }
+.w-poblizu { margin-top: 12px; }
+.w-poblizu .pusto { padding: 12px 4px; text-align: left; }
+.lokalizuj { width: 100%; justify-content: center; min-height: 44px; font-weight: 600; }
 .pozycja .linie { gap: 3px; }
 
 footer { color: var(--szary); font-size: .78rem; margin-top: 24px; }

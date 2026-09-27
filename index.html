@@ -21,6 +21,7 @@
         <span class="etykieta">Przystanek</span>
         <span id="nazwa-przystanku" class="nazwa">—</span>
       </button>
+      <button id="blisko" class="ikona-btn" type="button" aria-label="Najbliższe przystanki (lokalizacja)" title="Najbliższe przystanki">📍</button>
     </div>
     <div class="gora-info">
       <span id="teraz"></span>
@@ -48,6 +49,7 @@
       <p>Źródło: <a href="https://www.zkmb.pl/rozklad-jazdy/">zkmb.pl/rozklad-jazdy</a>.
         Godziny przyjazdów i dojazdów są szacowane z czasu jazdy w rozkładzie.
         Tolerancja punktualności: +1 / −3 min.</p>
+      <p>Położenie przystanków: © autorzy <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>.</p>
     </footer>
   </main>
 
@@ -68,6 +70,7 @@
   </dialog>
 
   <script src="data/rozklad.js"></script>
+  <script src="data/przystanki_gps.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

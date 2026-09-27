@@ -24,6 +24,7 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
   na kolejnych przystankach i link do tabliczki PDF,
 - **wyszukiwarka przystanków** (działa bez polskich znaków, np. „polcz petl”), z listą
   **ulubionych ★** i ostatnio wybieranych,
+- **📍 najbliższe przystanki** według lokalizacji telefonu – 5 najbliższych z odległością i czasem dojścia pieszo,
 - **filtr kierunku** oraz **„Dokąd jadę?”** – tylko kursy, które tam dojeżdżają, z godziną dojazdu,
 - **Przyjazdy** – szacowane godziny przyjazdu (działa też na pętlach),
 - **Rozkład** – pełna tabliczka godzinowa z zaznaczoną bieżącą godziną i przekreślonymi kursami, które już odjechały,
@@ -39,6 +40,9 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
 - Ten sam kurs bywa wpisany w rozkładach dwóch linii (np. 1 i 2). W Odjazdach takie kursy są łączone,
   ale w Przyjazdach (liczonych szacunkowo) rzadko ten sam autobus może pojawić się dwa razy.
 - Tolerancja punktualności wg ZKMB: +1 / −3 min. W razie wątpliwości sprawdź tabliczkę PDF.
+- ZKMB nie publikuje położenia przystanków, więc bierzemy je z [OpenStreetMap](https://www.openstreetmap.org/copyright).
+  Kilku przystanków (np. Inkubator, Stamma Sklep) nie ma na mapie – ich położenie jest szacowane
+  jako środek między sąsiednimi przystankami na trasie. Lokalizacja działa tylko przez https (GitHub Pages).
 
 ## Uruchomienie lokalnie
 
@@ -62,6 +66,7 @@ wystarczy go zmergować. Można ją też uruchomić ręcznie: *Actions → Aktua
 
 ```bash
 pip install pymupdf
+python3 narzedzia/pobierz_gps.py                # położenie przystanków z OpenStreetMap
 python3 narzedzia/pobierz_rozklad.py            # pobierz i zapisz, jeśli coś się zmieniło
 python3 narzedzia/pobierz_rozklad.py --sprawdz  # tylko sprawdź (kod wyjścia 1 = dane nieaktualne)
 ```
@@ -92,6 +97,7 @@ npm ci && npx playwright install chromium && npx playwright test
 | `app.js` | logika: odjazdy, przyjazdy, trasa kursu, wyszukiwarka, rozpoznawanie dni i świąt |
 | `sw.js`, `manifest.webmanifest`, `ikony/` | instalacja na telefonie i działanie offline |
 | `data/rozklad.js` | rozkład (generowany automatycznie – nie edytuj ręcznie) |
+| `data/przystanki_gps.js` | położenie przystanków z OpenStreetMap (generowane przez `narzedzia/pobierz_gps.py`) |
 | `narzedzia/pobierz_rozklad.py` | skrypt pobierający i odczytujący PDF-y z zkmb.pl |
 | `tests/` | testy danych, parsera PDF i strony |
 | `.github/workflows/` | automatyczne testy i codzienne sprawdzanie rozkładu |
