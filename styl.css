@@ -1,41 +1,54 @@
 :root {
-  --tlo: #f2f3f5;
+  /* kolory z barw miasta Białogard: koral, bordo, granat, błękit */
+  --koral: #fc7067;
+  --bordo: #7c2d42;
+  --granat: #28245d;
+  --blekit: #9dcbef;
+
+  --tlo: #f3f5fa;
   --karta: #ffffff;
-  --tekst: #16191d;
-  --szary: #5b6573;
-  --slaby: #8a939f;
-  --ramka: #dfe3e8;
-  --akcent: #b00d27;
-  --akcent-tekst: #ffffff;
-  --zaraz: #fdf1e3;
-  --zaraz-tekst: #9a4a00;
-  --teraz-godz: #fff6d6;
+  --tekst: #17162e;
+  --szary: #5a5d78;
+  --slaby: #8b8ea8;
+  --ramka: #dde1ee;
+  --naglowek: var(--granat);
+  --naglowek-tekst: #ffffff;
+  --akcent: var(--koral);          /* na granatowym tle: podkreślenia, wyróżnienia */
+  --akcent-tekst: var(--bordo);    /* akcent na jasnym tle (tekst, kropki na trasie) */
+  --wcisniety: var(--granat);
+  --zaraz: #fff0ee;
+  --zaraz-tekst: #b8423a;
+  --teraz-godz: #e3f0fb;
   --zolty: #ffeecc;
   --zolty-ramka: #8a6d1f;
-  --l1: #c8102e;
-  --l2: #1d5fbf;
-  --l3: #1f7a3a;
-  --l4: #7b2fa3;
-  --cien: 0 1px 2px rgba(0, 0, 0, .06);
+  --fokus: var(--bordo);
+  --l1: #cc4038;                   /* koral przyciemniony – biały numer musi być czytelny */
+  --l2: var(--granat);
+  --l3: var(--bordo);
+  --l4: var(--blekit);
+  --l4-tekst: var(--granat);
+  --cien: 0 1px 2px rgba(40, 36, 93, .08);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --tlo: #111316;
-    --karta: #1b1f24;
-    --tekst: #eceef1;
-    --szary: #a3adb9;
-    --slaby: #77818d;
-    --ramka: #2c3239;
-    --akcent: #d8324c;
-    --zaraz: #3a2a14;
-    --zaraz-tekst: #ffb86b;
-    --teraz-godz: #3a3319;
+    --tlo: #12112a;
+    --karta: #1f1d42;
+    --tekst: #eceef6;
+    --szary: #aeb2cf;
+    --slaby: #7f83a3;
+    --ramka: #34315e;
+    --naglowek: #1c1947;
+    --akcent-tekst: var(--koral);
+    --wcisniety: var(--koral);
+    --zaraz: #3a2230;
+    --zaraz-tekst: #ff9b93;
+    --teraz-godz: #26305a;
     --zolty: #5c4a1c;
     --zolty-ramka: #e0c070;
-    --l1: #e0364f;
-    --l2: #3b7de0;
-    --l3: #2e9a50;
-    --l4: #9a55c4;
+    --fokus: var(--blekit);
+    --l1: #d9483f;
+    --l2: #4a45a0;
+    --l3: #a8455d;
     --cien: none;
   }
 }
@@ -55,7 +68,7 @@ a { color: inherit; }
 /* ---------- nagłówek ---------- */
 .gora {
   position: sticky; top: 0; z-index: 5;
-  background: var(--akcent); color: var(--akcent-tekst);
+  background: var(--naglowek); color: var(--naglowek-tekst);
   padding: calc(8px + env(safe-area-inset-top)) 16px 0;
 }
 .gora-wiersz, .gora-info, .zakladki, main { max-width: 640px; margin: 0 auto; }
@@ -91,7 +104,7 @@ a { color: inherit; }
   flex: 1; border: 0; background: transparent; padding: 10px 4px 12px; min-height: 44px;
   font-weight: 600; opacity: .75; cursor: pointer; border-bottom: 3px solid transparent;
 }
-.zakladki button[aria-selected="true"] { opacity: 1; border-bottom-color: currentColor; }
+.zakladki button[aria-selected="true"] { opacity: 1; border-bottom-color: var(--akcent); }
 
 /* ---------- treść ---------- */
 main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
@@ -103,7 +116,9 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
   border: 1px solid var(--ramka); background: var(--karta); border-radius: 999px;
   padding: 6px 12px; min-height: 36px; font-size: .9rem; cursor: pointer; white-space: nowrap;
 }
-.chip[aria-pressed="true"] { background: var(--tekst); color: var(--karta); border-color: var(--tekst); }
+.chip[aria-pressed="true"] { background: var(--wcisniety); color: #fff; border-color: var(--wcisniety); }
+/* odznaka linii w kolorze tła przycisku (np. granatowa „2”) musi być widoczna */
+.chip[aria-pressed="true"] .linia { box-shadow: 0 0 0 1.5px #fff; }
 .info { color: var(--szary); font-size: .85rem; margin: 8px 0; }
 .info strong { color: var(--tekst); }
 
@@ -122,7 +137,7 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 .linia.mala { min-width: 22px; font-size: .75rem; padding: 1px 4px; border-radius: 5px; }
 .linia[data-l="2"] { background: var(--l2); }
 .linia[data-l="3"] { background: var(--l3); }
-.linia[data-l="4"] { background: var(--l4); }
+.linia[data-l="4"] { background: var(--l4); color: var(--l4-tekst); }
 .srodek { flex: 1; min-width: 0; }
 .kierunek {
   font-weight: 650; overflow: hidden; overflow-wrap: anywhere;
@@ -135,7 +150,7 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 }
 .znaczek.zolty { background: var(--zolty); border-color: var(--zolty-ramka); }
 .tag { font-weight: 700; font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; }
-.tag.ostatni { color: var(--akcent); }
+.tag.ostatni { color: var(--akcent-tekst); }
 .prawa { flex: none; text-align: right; min-width: 64px; }
 .duzy { font-weight: 800; font-size: 1.35rem; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .kurs.zaraz .duzy { color: var(--zaraz-tekst); }
@@ -152,7 +167,7 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
   content: ""; position: absolute; left: 0; top: 50%; width: 8px; height: 8px; margin-top: -4px;
   border-radius: 50%; background: var(--karta); border: 2px solid var(--slaby);
 }
-.trasa li.tu::after, .trasa li.cel::after { background: var(--akcent); border-color: var(--akcent); }
+.trasa li.tu::after, .trasa li.cel::after { background: var(--akcent-tekst); border-color: var(--akcent-tekst); }
 .trasa li.tu, .trasa li.cel { font-weight: 700; }
 .trasa .g { font-variant-numeric: tabular-nums; color: var(--szary); }
 .linki { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -169,7 +184,7 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 .godz { display: flex; border-top: 1px solid var(--ramka); }
 .godz:first-child { border-top: 0; }
 .godz.teraz { background: var(--teraz-godz); }
-.godz .h { flex: none; width: 44px; padding: 6px 0; text-align: center; font-weight: 800; color: var(--akcent); font-variant-numeric: tabular-nums; }
+.godz .h { flex: none; width: 44px; padding: 6px 0; text-align: center; font-weight: 800; color: var(--akcent-tekst); font-variant-numeric: tabular-nums; }
 .godz .m { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 6px 8px; font-variant-numeric: tabular-nums; font-size: 1.05rem; }
 .godz .m span.minelo { color: var(--slaby); text-decoration: line-through; text-decoration-thickness: 1px; }
 .godz .m sup { font-size: .65rem; color: var(--szary); margin-left: 1px; }
@@ -184,7 +199,7 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 .szukaj::backdrop { background: rgba(0, 0, 0, .4); }
 .szukaj-gora {
   position: sticky; top: 0; display: flex; gap: 8px; align-items: center;
-  padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: var(--akcent); color: #fff;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: var(--naglowek); color: #fff;
 }
 .szukaj-gora input {
   flex: 1; min-width: 0; font: inherit; font-size: 1.05rem; padding: 10px 12px; border: 0; border-radius: 10px;
@@ -208,7 +223,8 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 footer { color: var(--szary); font-size: .78rem; margin-top: 24px; }
 footer p { margin: 4px 0; }
 
-:focus-visible { outline: 3px solid #4d90fe; outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--fokus); outline-offset: 2px; }
+.gora :focus-visible, .szukaj-gora :focus-visible { outline-color: var(--akcent); }
 
 
 /* ---------- połączenia skąd → dokąd ---------- */
