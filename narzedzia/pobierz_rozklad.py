@@ -4,6 +4,7 @@
 Użycie:
     pip install pymupdf
     python3 narzedzia/pobierz_rozklad.py            # pobierz i zapisz, jeśli coś się zmieniło
+                                                    # (zawsze zapisuje też datę sprawdzenia: data/sprawdzono.js)
     python3 narzedzia/pobierz_rozklad.py --sprawdz  # tylko sprawdź (kod 1 = dane nieaktualne)
 
 Każdy PDF na zkmb.pl to jedna tabliczka: linia + przystanek + kierunek.
@@ -21,12 +22,14 @@ import sys
 import time
 import unicodedata
 import urllib.request
+import zoneinfo
 
 import pymupdf
 
 STRONA = "https://www.zkmb.pl/rozklad-jazdy/"
 KATALOG = os.path.dirname(os.path.abspath(__file__))
 WYJSCIE = os.path.join(KATALOG, "..", "data", "rozklad.js")
+SPRAWDZONO = os.path.join(KATALOG, "..", "data", "sprawdzono.js")
 
 # Kursy zaznaczone na żółto w PDF dostają ten znak (w objaśnieniach: żółty prostokąt).
 ZNAK_ZOLTY = "#"
@@ -262,6 +265,17 @@ def opisz_roznice(stare, nowe):
     return wynik or ["inne zmiany w danych"]
 
 
+def zapisz_sprawdzono():
+    """Zapisuje, kiedy ostatnio porównano dane z zkmb.pl (strona pokazuje to w stopce)."""
+    teraz = datetime.datetime.now(zoneinfo.ZoneInfo("Europe/Warsaw"))
+    with open(SPRAWDZONO, "w", encoding="utf-8") as f:
+        f.write("// Wygenerowane przez narzedzia/pobierz_rozklad.py – data ostatniego sprawdzenia rozkładu na zkmb.pl.\n")
+        f.write("window.SPRAWDZONO = ")
+        json.dump({"data": teraz.strftime("%Y-%m-%d"), "godzina": teraz.strftime("%H:%M")}, f)
+        f.write(";\n")
+    print(f"Sprawdzono: {teraz:%Y-%m-%d %H:%M} ({os.path.relpath(SPRAWDZONO)})")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sprawdz", action="store_true",
@@ -272,6 +286,8 @@ def main():
     stare = wczytaj_obecne()
     if bez_daty(stare) == bez_daty(nowe):
         print(f"\nRozkład jest aktualny ({len(nowe['tabliczki'])} tabliczek, bez zmian od {stare['pobrano']}).")
+        if not args.sprawdz:
+            zapisz_sprawdzono()
         return
     print("\nRozkład na zkmb.pl różni się od data/rozklad.js:")
     for linia in opisz_roznice(stare, nowe):
@@ -284,6 +300,7 @@ def main():
         json.dump(nowe, f, ensure_ascii=False, separators=(",", ":"))
         f.write(";\n")
     print(f"Zapisano {len(nowe['tabliczki'])} tabliczek do {os.path.relpath(WYJSCIE)}")
+    zapisz_sprawdzono()
 
 
 if __name__ == "__main__":

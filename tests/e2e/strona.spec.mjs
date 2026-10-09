@@ -239,3 +239,10 @@ test("gdy wyszukiwarka adresów nie działa, można wybrać przystanek", async (
   await expect(page.locator("#szukaj-wyniki")).toContainText("Wyszukiwarka adresów nie odpowiada");
   await expect(page.locator("#szukaj-wyniki .pozycja", { hasText: "Komara" }).first()).toBeVisible();
 });
+
+test("stopka pokazuje, kiedy sprawdzono zgodność z zkmb.pl", async ({ page }) => {
+  await otworz(page, "/?p=dworcowa");
+  const s = await page.evaluate(() => window.SPRAWDZONO);
+  const [r, m, d] = s.data.split("-");
+  await expect(page.locator("#wersja")).toContainText(`sprawdzono ${+d}.${m}.${r} o ${s.godzina}`);
+});

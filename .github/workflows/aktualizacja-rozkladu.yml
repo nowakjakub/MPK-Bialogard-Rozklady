@@ -1,7 +1,9 @@
 name: Aktualizacja rozkładu
 
-# Codziennie sprawdza, czy ZKMB zmienił PDF-y z rozkładem. Jeśli tak – pobiera nowe dane,
-# uruchamia testy i otwiera pull request ze zmianami do sprawdzenia.
+# Codziennie sprawdza, czy ZKMB zmienił PDF-y z rozkładem.
+# - bez zmian: zapisuje na master tylko datę sprawdzenia (data/sprawdzono.js) – strona pokazuje
+#   „sprawdzono z zkmb.pl: <dzisiaj>”,
+# - zmiany: pobiera nowe dane, uruchamia testy i otwiera pull request (razem z datą sprawdzenia).
 on:
   schedule:
     - cron: "17 3 * * *"   # codziennie ok. 5:17 czasu polskiego
@@ -10,6 +12,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  pages: write          # żeby po zapisaniu daty od razu przebudować stronę
 
 concurrency:
   group: aktualizacja-rozkladu
@@ -47,6 +50,32 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Zapisz datę sprawdzenia (rozkład bez zmian)
+        if: steps.pobierz.outputs.zmiany == 'nie' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/sprawdzono.js
+          if git diff --cached --quiet; then
+            echo "Data sprawdzenia bez zmian."
+            exit 0
+          fi
+          git commit -m "Sprawdzono rozkład z zkmb.pl: bez zmian ($(date +%F))"
+          # do 3 prób – gdyby ktoś w międzyczasie coś wmergował
+          for proba in 1 2 3; do
+            git pull --rebase --quiet origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((proba * 5))
+          done
+          exit 1
+
+      - name: Przebuduj stronę (GitHub Pages)
+        # commit z GITHUB_TOKEN może nie uruchomić budowania Pages, więc zlecamy je jawnie
+        if: steps.pobierz.outputs.zmiany == 'nie' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" --silent
+
       - name: Uzupełnij położenie przystanków (OpenStreetMap)
         if: steps.pobierz.outputs.zmiany == 'tak'
         continue-on-error: true
@@ -65,6 +94,7 @@ jobs:
           add-paths: |
             data/rozklad.js
             data/przystanki_gps.js
+            data/sprawdzono.js
           commit-message: "Aktualizacja rozkładu z zkmb.pl"
           title: "Aktualizacja rozkładu z zkmb.pl"
           body: |

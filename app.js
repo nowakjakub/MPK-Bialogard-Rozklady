@@ -1105,8 +1105,15 @@
   var najnowsza = DANE.waznyOd.slice().sort(function (a, b) {
     return a.split(".").reverse().join("").localeCompare(b.split(".").reverse().join(""));
   }).pop();
-  el.wersja.textContent = "Rozkład szkolny ważny od " + najnowsza +
-    ", dane pobrane " + DANE.pobrano + ".";
+  // data ostatniego porównania z zkmb.pl (codziennie, także gdy rozkład się nie zmienił)
+  function dataPL(iso) {
+    var c = iso.split("-");
+    return parseInt(c[2], 10) + "." + c[1] + "." + c[0];
+  }
+  var sprawdzono = window.SPRAWDZONO && window.SPRAWDZONO.data >= DANE.pobrano ? window.SPRAWDZONO : null;
+  el.wersja.textContent = "Rozkład szkolny ważny od " + najnowsza + ". " + (sprawdzono
+    ? "Zgodność z zkmb.pl sprawdzono " + dataPL(sprawdzono.data) + " o " + sprawdzono.godzina + "."
+    : "Dane pobrane " + dataPL(DANE.pobrano) + ".");
 
   var parametry = new URLSearchParams(location.search);
   var startowy = parametry.get("p");
