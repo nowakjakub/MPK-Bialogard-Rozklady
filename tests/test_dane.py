@@ -10,6 +10,7 @@ import unittest
 KATALOG = os.path.dirname(os.path.abspath(__file__))
 PLIK = os.path.join(KATALOG, "..", "data", "rozklad.js")
 PLIK_GPS = os.path.join(KATALOG, "..", "data", "przystanki_gps.js")
+PLIK_SPRAWDZONO = os.path.join(KATALOG, "..", "data", "sprawdzono.js")
 
 # Oznaczenia, których brakuje w objaśnieniach na oryginalnych tabliczkach ZKMB (błąd w PDF, nie u nas).
 ZNANE_BRAKI_OBJASNIEN = {
@@ -102,6 +103,15 @@ class TestPolozeniePrzystankow(unittest.TestCase):
     def test_malo_szacowanych(self):
         szac = [k for k, v in self.gps.items() if v.get("szac")]
         self.assertLessEqual(len(szac), 10, szac)
+
+
+class TestDataSprawdzenia(unittest.TestCase):
+    def test_format_i_kolejnosc(self):
+        sprawdzono = wczytaj(PLIK_SPRAWDZONO)
+        self.assertRegex(sprawdzono["data"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(sprawdzono["godzina"], r"^([01]\d|2[0-3]):[0-5]\d$")
+        # sprawdzenie nie może być starsze niż pobranie danych, które sprawdza
+        self.assertGreaterEqual(sprawdzono["data"], wczytaj()["pobrano"])
 
 
 if __name__ == "__main__":

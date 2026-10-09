@@ -61,9 +61,14 @@ więc każda zmiana wmergowana do `master` po 1–2 minutach pojawia się pod li
 ## Aktualizacja rozkładu
 
 **Automatycznie:** GitHub Action [„Aktualizacja rozkładu”](.github/workflows/aktualizacja-rozkladu.yml)
-codziennie rano pobiera PDF-y z zkmb.pl i porównuje je z `data/rozklad.js`.
-Jeśli ZKMB coś zmienił, uruchamia testy i otwiera pull request z nowymi danymi –
-wystarczy go zmergować. Można ją też uruchomić ręcznie: *Actions → Aktualizacja rozkładu → Run workflow*.
+codziennie rano pobiera PDF-y z zkmb.pl i porównuje je z `data/rozklad.js`:
+
+- **bez zmian** – zapisuje na `master` tylko datę sprawdzenia (`data/sprawdzono.js`), więc w stopce strony
+  widać „Zgodność z zkmb.pl sprawdzono 9.10.2026 o 07:17” z dzisiejszą datą,
+- **zmiany** – uruchamia testy i otwiera pull request z nowymi danymi (i datą sprawdzenia) –
+  wystarczy go zmergować.
+
+Można ją też uruchomić ręcznie: *Actions → Aktualizacja rozkładu → Run workflow*.
 
 > Żeby Action mogła otwierać pull requesty, włącz w repozytorium:
 > *Settings → Actions → General → Workflow permissions →*
@@ -104,6 +109,7 @@ npm ci && npx playwright install chromium && npx playwright test
 | `app.js` | logika: odjazdy, przyjazdy, trasa kursu, wyszukiwarka, rozpoznawanie dni i świąt |
 | `sw.js`, `manifest.webmanifest`, `ikony/` | instalacja na telefonie i działanie offline |
 | `data/rozklad.js` | rozkład (generowany automatycznie – nie edytuj ręcznie) |
+| `data/sprawdzono.js` | data ostatniego sprawdzenia rozkładu na zkmb.pl (aktualizowana codziennie) |
 | `data/przystanki_gps.js` | położenie przystanków z OpenStreetMap (generowane przez `narzedzia/pobierz_gps.py`) |
 | `narzedzia/pobierz_rozklad.py` | skrypt pobierający i odczytujący PDF-y z zkmb.pl |
 | `tests/` | testy danych, parsera PDF i strony |
