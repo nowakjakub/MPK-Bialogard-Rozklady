@@ -27,7 +27,7 @@ test("odjazdy: pierwszy kurs z Dworcowej zgadza się z rozkładem", async ({ pag
   const dane = await page.evaluate(() => window.ROZKLAD);
   const oczekiwany = pierwszyOdjazd(dane, "dworcowa", 7 * 60);
 
-  const pierwszy = page.locator(".kurs > button").first();
+  const pierwszy = page.locator(".kurs:not(.odjechal) > button").first();
   await expect(pierwszy.locator(".linia").first()).toHaveText(oczekiwany.linia);
   await expect(pierwszy.locator(".kierunek")).toHaveText(oczekiwany.kierunek);
   await expect(pierwszy.locator(".maly")).toHaveText(oczekiwany.g);
@@ -97,7 +97,7 @@ test("święto (25 grudnia) używa rozkładu niedzielnego", async ({ page }) => 
   await expect(page.locator("#teraz")).toContainText("sobota / niedziela / święto");
   const dane = await page.evaluate(() => window.ROZKLAD);
   const oczekiwany = pierwszyOdjazd(dane, "dworcowa", 10 * 60, "SN");
-  await expect(page.locator(".kurs > button .maly").first()).toHaveText(oczekiwany.g);
+  await expect(page.locator(".kurs:not(.odjechal) > button .maly").first()).toHaveText(oczekiwany.g);
 });
 
 test("późnym wieczorem pokazuje kursy na jutro", async ({ page }) => {
@@ -245,4 +245,41 @@ test("stopka pokazuje, kiedy sprawdzono zgodność z zkmb.pl", async ({ page }) 
   const s = await page.evaluate(() => window.SPRAWDZONO);
   const [r, m, d] = s.data.split("-");
   await expect(page.locator("#wersja")).toContainText(`sprawdzono ${+d}.${m}.${r} o ${s.godzina}`);
+});
+
+test("odjazdy: na górze widać kursy, które odjechały w ostatnich 15 minutach", async ({ page }) => {
+  const bledy = await otworz(page, "/?p=dworcowa", new Date("2026-09-28T07:10:00+02:00"));
+  const dane = await page.evaluate(() => window.ROZKLAD);
+  const min = (g) => +g.slice(0, 2) * 60 + +g.slice(3);
+  const teraz = 7 * 60 + 10;
+  // kursy (bez powtórek linii 1/2) z ostatnich 15 minut wg danych
+  const godziny = [...new Set(dane.tabliczki.filter((t) => t.k === "dworcowa")
+    .flatMap((t) => t.odjazdy.R.map(([g]) => g))
+    .filter((g) => min(g) < teraz && min(g) >= teraz - 15))].sort();
+  expect(godziny.length).toBeGreaterThan(0);
+
+  const odjechane = page.locator(".kurs.odjechal");
+  const ile = await odjechane.count();
+  expect(ile).toBeGreaterThan(0);
+  expect(ile).toBeLessThanOrEqual(3);
+  // ostatni odjechany to najpóźniejszy kurs przed „teraz”, z opisem ile minut temu
+  const ostatni = godziny[godziny.length - 1];
+  await expect(odjechane.last().locator(".duzy")).toHaveText(ostatni);
+  await expect(odjechane.last().locator(".maly")).toHaveText(`${teraz - min(ostatni)} min temu`);
+  // odjechane są nad nadchodzącymi
+  const klasy = await page.locator("#lista > li").evaluateAll((l) => l.map((x) => x.classList.contains("odjechal")));
+  expect(klasy.indexOf(false)).toBe(ile);
+  // da się je rozwinąć jak zwykły kurs
+  await odjechane.last().locator("> button").click();
+  await expect(odjechane.last().locator(".trasa")).toContainText("Dworcowa");
+  expect(bledy).toEqual([]);
+});
+
+test("odjazdy: kurs sprzed ponad 15 minut już się nie pokazuje", async ({ page }) => {
+  await otworz(page, "/?p=dworcowa", new Date("2026-09-28T07:30:00+02:00"));
+  const godziny = await page.locator(".kurs.odjechal .duzy").allTextContents();
+  for (const g of godziny) {
+    const min = +g.slice(0, 2) * 60 + +g.slice(3);
+    expect(7 * 60 + 30 - min).toBeLessThanOrEqual(15);
+  }
 });

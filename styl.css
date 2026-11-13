@@ -125,6 +125,10 @@ main { padding: 0 16px calc(24px + env(safe-area-inset-bottom)); }
 .lista { list-style: none; margin: 0; padding: 0; }
 .kurs { background: var(--karta); border: 1px solid var(--ramka); border-radius: 12px; margin-bottom: 6px; box-shadow: var(--cien); }
 .kurs.zaraz { border-color: var(--zaraz-tekst); }
+/* kursy, które właśnie odjechały: wyszarzone, ale nadal czytelne */
+.kurs.odjechal { background: transparent; box-shadow: none; border-style: dashed; }
+.kurs.odjechal > button { opacity: .6; min-height: 48px; }
+.kurs.odjechal .duzy { font-size: 1.05rem; text-decoration: line-through; text-decoration-thickness: 1px; }
 .kurs > button {
   width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
   border: 0; background: transparent; padding: 8px 12px; min-height: 58px; cursor: pointer;
