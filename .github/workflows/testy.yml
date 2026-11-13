@@ -23,7 +23,8 @@ jobs:
 
   strona:
     name: Strona w przeglądarce
-    runs-on: ubuntu-latest
+    # Playwright 1.56 nie instaluje przeglądarki na Ubuntu 26.04 (obecne ubuntu-latest)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
