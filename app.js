@@ -3,6 +3,8 @@
 
   var DANE = window.ROZKLAD;
   var ILE_POZYCJI = 20;
+  var ODJECHALY_MIN = 15;   // pokazujemy kursy, które odjechały w ciągu ostatnich 15 minut…
+  var ILE_ODJECHALYCH = 3;  // …ale najwyżej 3
   var NAZWY_DNI = { R: "dzień powszedni", SN: "sobota / niedziela / święto" };
   var DNI_TYGODNIA = ["niedz.", "pon.", "wt.", "śr.", "czw.", "pt.", "sob."];
   var ZNAK_ZOLTY = "#";
@@ -217,9 +219,10 @@
 
   // ---------- szukanie kursów ----------
 
-  // Dla dziś i jutra wywołuje fn(tabliczka, godzina, oznaczenie, przesunięcieDni).
+  // Dla wczoraj, dziś i jutra wywołuje fn(tabliczka, godzina, oznaczenie, przesunięcieDni).
+  // Wczoraj jest potrzebne tuż po północy, żeby pokazać kurs, który odjechał o 23:55.
   function dlaKazdegoOdjazdu(tabliczki, od, fn) {
-    [0, 1].forEach(function (przesuniecie) {
+    [-1, 0, 1].forEach(function (przesuniecie) {
       var dzien = new Date(od.getFullYear(), od.getMonth(), od.getDate() + przesuniecie);
       var typ = typDnia(dzien);
       tabliczki.forEach(function (t) {
@@ -249,10 +252,11 @@
     var wyniki = [];
     dlaKazdegoOdjazdu(tabliczki, od, function (t, godzina, oznaczenie, przesuniecie) {
       var min = naMinuty(godzina) + przesuniecie * 1440;
-      if (min < teraz) return;
+      if (min < teraz - ODJECHALY_MIN) return;
       if (stan.kierunek && kluczKierunku(t) !== stan.kierunek) return;
       var w = { t: t, linie: [t.linia], min: min, oznaczenie: oznaczenie, jutro: przesuniecie > 0,
-        ostatni: ostatnie[tabliczki.indexOf(t) + "|" + przesuniecie] === godzina, start: min, indeks: 0 };
+        ostatni: ostatnie[tabliczki.indexOf(t) + "|" + przesuniecie] === godzina, start: min, indeks: 0,
+        odjechal: min < teraz };
       // ten sam kurs bywa wpisany w tabliczki dwóch linii – łączymy je w jeden wiersz
       var ten = wyniki.filter(function (x) {
         return x.min === min && kluczKierunku(x.t) === kluczKierunku(t) && x.oznaczenie === oznaczenie;
@@ -263,7 +267,9 @@
       }
       wyniki.push(w);
     });
-    return posortuj(wyniki);
+    // na górze kilka kursów, które właśnie odjechały, pod nimi najbliższe odjazdy
+    var odjechaly = posortuj(wyniki.filter(function (w) { return w.odjechal; })).slice(-ILE_ODJECHALYCH);
+    return odjechaly.concat(posortuj(wyniki.filter(function (w) { return !w.odjechal; })));
   }
 
   // Przyjazd = odjazd z wcześniejszego przystanku + czas jazdy. Liczymy ze wszystkich tabliczek
@@ -462,9 +468,11 @@
       return;
     }
 
-    wyniki.forEach(function (w, i) {
+    var pierwszyNadchodzacy = wyniki.filter(function (w) { return !w.odjechal; })[0];
+    wyniki.forEach(function (w) {
       var id = stan.tryb + "|" + w.linie.join(",") + "|" + w.t.kierunek + "|" + w.min;
       var za = w.min - teraz;
+      if (w.odjechal) return rysujOdjechany(w, id, -za);
       var li = dodaj(el.lista, "li", "kurs" + (za <= 5 ? " zaraz" : ""));
       var btn = dodaj(li, "button");
       btn.type = "button";
@@ -498,10 +506,40 @@
         rysujListe();
       });
       if (stan.otwarty === id) rysujSzczegoly(li, w);
-      if (i === 0 && za > 120) {
+      if (w === pierwszyNadchodzacy && za > 120) {
         dodaj(li, "div", "szczegoly", "Najbliższy kurs dopiero za " + opisZa(za) + ".").style.color = "var(--szary)";
       }
     });
+    if (!pierwszyNadchodzacy) {
+      // są tylko kursy, które już odjechały
+      dodaj(el.lista, "li", "pusto", "Brak kolejnych kursów do końca jutrzejszego dnia" + (stan.kierunek ? " dla wybranego filtra." : "."));
+    }
+  }
+
+  // Kurs, który już odjechał: wyszarzony, z informacją „odjechał N min temu”.
+  function rysujOdjechany(w, id, minelo) {
+    var li = dodaj(el.lista, "li", "kurs odjechal");
+    var btn = dodaj(li, "button");
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", String(stan.otwarty === id));
+    var linie = dodaj(btn, "span", "linie");
+    w.linie.forEach(function (l) { odznakaLinii(linie, l); });
+    var srodek = dodaj(btn, "span", "srodek");
+    dodaj(srodek, "span", "kierunek", w.t.kierunek);
+    var pod = dodaj(srodek, "span", "pod");
+    dodaj(pod, "span", "tag", "odjechał");
+    znaki(w.oznaczenie).forEach(function (z) { znaczek(pod, z); });
+    var prawa = dodaj(btn, "span", "prawa");
+    dodaj(prawa, "span", "duzy", naTekst(w.min)).style.display = "block";
+    var temu = minelo < 1 ? "przed chwilą" : minelo + " min temu";
+    dodaj(prawa, "span", "maly", temu).style.display = "block";
+    btn.setAttribute("aria-label", "Odjechał: linia " + w.linie.join(" i ") + " w kierunku " + w.t.kierunek +
+      ", o " + naTekst(w.min) + ", " + temu);
+    btn.addEventListener("click", function () {
+      stan.otwarty = stan.otwarty === id ? null : id;
+      rysujListe();
+    });
+    if (stan.otwarty === id) rysujSzczegoly(li, w);
   }
 
   function rysujSzczegoly(li, w) {

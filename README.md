@@ -20,6 +20,7 @@ strona zainstaluje się jak aplikacja (z ikonką) i będzie działać także bez
 
 - **Odjazdy** jak na tablicy elektronicznej: numer linii, kierunek i duże odliczanie („6 min”),
   kolejne kursy z godziną; kursy z dwóch linii o tej samej godzinie są połączone w jeden wiersz,
+- nad nimi **kursy, które właśnie odjechały** (do 3 z ostatnich 15 minut) – wyszarzone, z opisem „odjechał 4 min temu”,
 - **dotknięcie kursu** pokazuje znaczenie oznaczeń, cały przebieg trasy z godzinami
   na kolejnych przystankach i link do tabliczki PDF,
 - **Skąd** – jedno pole: wybierz przystanek, wpisz adres albo użyj **📍 najbliższego przystanku** (GPS).
