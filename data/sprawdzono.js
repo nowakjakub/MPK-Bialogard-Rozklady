@@ -1,2 +1,2 @@
 // Wygenerowane przez narzedzia/pobierz_rozklad.py – data ostatniego sprawdzenia rozkładu na zkmb.pl.
-window.SPRAWDZONO = {"data": "2026-11-24", "godzina": "14:54"};
+window.SPRAWDZONO = {"data": "2026-11-25", "godzina": "14:09"};
